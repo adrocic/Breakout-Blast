@@ -19,7 +19,7 @@ let allBalls = [];
 let powerUps = [];
 let gameOver = false;
 let paused = false;
-let isDebugging = true;
+let isDebugging = false;
 
 let backgroundImage;
 
