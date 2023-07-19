@@ -1,6 +1,9 @@
 # Breakout Blast
 
-<img src="https://github.com/adrocic/breakout-game-holiday-break/blob/main/Assets/Breakout%20Blast%20Gif.gif" />
+<a href="https://jade-quokka-d2f928.netlify.app">
+   <img src="https://github.com/adrocic/breakout-game-holiday-break/blob/main/Assets/Breakout%20Blast%20Gif.gif" height="300" width="800">
+</a>
+
 
 # [Live Demo](https://jade-quokka-d2f928.netlify.app)
 
