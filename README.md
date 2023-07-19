@@ -10,34 +10,24 @@
 Welcome to Breakout Blast, a vibrant and exciting breakout game with a twist! Get ready to test your reflexes and strategic thinking as you aim to break through all the colorful blocks using a paddle and a bouncing ball. But be prepared for the unexpected, because this game is packed with power-ups that will take your gaming experience to the next level!
 
 ## Features
-# <span style="color: #FF0000;">Custom Assets and Hand Drawn Animations</span>
-That's right, I drew up the assets and animations myself! It was so fun!
+```Custom Assets and Hand Drawn Animations``` : That's right, I drew up the assets and animations myself! It was so fun!
 
-## <span style="color: #FF7F00;">Colorful and Dynamic Visuals</span>
+```Colorful and Dynamic Visuals```: Immerse yourself in a visually stunning world of vibrant colors and captivating animations that will make every moment of gameplay a feast for your eyes.
 
-### <span style="color: #FFFF00;">Intense Breakout Action</span>
+``` Intense Breakout Action```: Enjoy classic breakout gameplay with a challenging twist. Use your paddle to bounce the ball and break through the blocks, aiming for the high score.
 
-#### <span style="color: #00FF00;">Exciting Power-ups</span>
+```Exciting Power-ups```: Brace yourself for an array of awesome power-ups that will enhance your abilities and turn the tide in your favor. Catch them with your paddle and unlock their incredible effects.
 
-##### <span style="color: #0000FF;">Multiple Levels</span>
+```Multiple Levels```: Progress through a series of engaging levels, each with its own unique design and challenges. Can you conquer them all and become the ultimate breakout master?
 
-###### <span style="color: #4B0082;">Responsive Controls</span>
-```diff - Custom Assets and Hand Drawn Animations ``` : That's right, I drew up the assets and animations myself! It was so fun!
+```Responsive Controls```: Experience smooth and precise controls that allow you to navigate the paddle with ease. The intuitive interface ensures that you stay focused on the game.
 
-```diff + Colorful and Dynamic Visuals```: Immerse yourself in a visually stunning world of vibrant colors and captivating animations that will make every moment of gameplay a feast for your eyes.
-
-```diff ! Intense Breakout Action```: Enjoy classic breakout gameplay with a challenging twist. Use your paddle to bounce the ball and break through the blocks, aiming for the high score.
-
-```diff @ Exciting Power-ups```: Brace yourself for an array of awesome power-ups that will enhance your abilities and turn the tide in your favor. Catch them with your paddle and unlock their incredible effects.
-
-```diff - Multiple Levels```: Progress through a series of engaging levels, each with its own unique design and challenges. Can you conquer them all and become the ultimate breakout master?
-
-```diff + Responsive Controls```: Experience smooth and precise controls that allow you to navigate the paddle with ease. The intuitive interface ensures that you stay focused on the game.
 ```
-
 ## How to Play
 
-1. Use the left and right arrow keys or the A and D keys to move the paddle horizontally.
+Spacebar to pause the game!
+
+1. Use the left and right arrow keys or the A and D keys to move the paddle horizontally (or use your mouse).
 
 2. Launch the ball by pressing the spacebar or the up arrow key.
 
@@ -48,6 +38,7 @@ That's right, I drew up the assets and animations myself! It was so fun!
 5. Be careful not to let the ball fall below the paddle. If you miss, you'll lose a life. Lose all your lives, and it's game over!
 
 6. Complete each level to unlock new challenges and exciting surprises.
+```
 
 ## Demo
 
