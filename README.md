@@ -1,6 +1,6 @@
 # Breakout Blast
 
-![Breakout Blast Logo]((https://github.com/adrocic/breakout-game-holiday-break/blob/main/Assets/Screenshot%202023-07-18%20192112.png))
+![Breakout Blast Demo](https://github.com/adrocic/breakout-game-holiday-break/blob/main/Assets/Screenshot%202023-07-18%20192112.png)
 
 Welcome to Breakout Blast, a vibrant and exciting breakout game with a twist! Get ready to test your reflexes and strategic thinking as you aim to break through all the colorful blocks using a paddle and a bouncing ball. But be prepared for the unexpected, because this game is packed with power-ups that will take your gaming experience to the next level!
 
