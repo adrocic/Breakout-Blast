@@ -9,19 +9,18 @@
 
 Welcome to Breakout Blast, a vibrant and exciting breakout game with a twist! Get ready to test your reflexes and strategic thinking as you aim to break through all the colorful blocks using a paddle and a bouncing ball. But be prepared for the unexpected, because this game is packed with power-ups that will take your gaming experience to the next level!
 
-```diff
 ## Features
-- **Custom Assets and Hand Drawn Animations**: That's right, I drew up the assets and animations myself! It was so fun!
+```diff - Custom Assets and Hand Drawn Animations```: That's right, I drew up the assets and animations myself! It was so fun!
 
-! **Colorful and Dynamic Visuals**: Immerse yourself in a visually stunning world of vibrant colors and captivating animations that will make every moment of gameplay a feast for your eyes.
+```diff + Colorful and Dynamic Visuals```: Immerse yourself in a visually stunning world of vibrant colors and captivating animations that will make every moment of gameplay a feast for your eyes.
 
-+ **Intense Breakout Action**: Enjoy classic breakout gameplay with a challenging twist. Use your paddle to bounce the ball and break through the blocks, aiming for the high score.
+```diff ! Intense Breakout Action```: Enjoy classic breakout gameplay with a challenging twist. Use your paddle to bounce the ball and break through the blocks, aiming for the high score.
 
-@ **Exciting Power-ups**: Brace yourself for an array of awesome power-ups that will enhance your abilities and turn the tide in your favor. Catch them with your paddle and unlock their incredible effects.
+```diff @ Exciting Power-ups```: Brace yourself for an array of awesome power-ups that will enhance your abilities and turn the tide in your favor. Catch them with your paddle and unlock their incredible effects.
 
-- **Multiple Levels**: Progress through a series of engaging levels, each with its own unique design and challenges. Can you conquer them all and become the ultimate breakout master?
+```diff - Multiple Levels```: Progress through a series of engaging levels, each with its own unique design and challenges. Can you conquer them all and become the ultimate breakout master?
 
-! **Responsive Controls**: Experience smooth and precise controls that allow you to navigate the paddle with ease. The intuitive interface ensures that you stay focused on the game.
+```diff + Responsive Controls```: Experience smooth and precise controls that allow you to navigate the paddle with ease. The intuitive interface ensures that you stay focused on the game.
 ```
 
 ## How to Play
