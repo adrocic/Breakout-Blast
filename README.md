@@ -58,7 +58,7 @@ To run Breakout Blast locally, follow these steps:
 Start playing and enjoy the breakout fun!
 
 ## Credits
-Breakout Blast is built with p5.js, a JavaScript library that makes it easy to create interactive graphics and animations. The game was developed by [Your Name] as a fun project to showcase the power of p5.js.
+Breakout Blast is built with p5.js, a JavaScript library that makes it easy to create interactive graphics and animations. The game was developed by Anel Drocic as a fun project to showcase the power of p5.js.
 
 ## Contributing
 We welcome contributions to make Breakout Blast even better! If you have any suggestions, bug fixes, or feature implementations, feel free to open an issue or submit a pull request. We appreciate your support in enhancing the game for the entire community.
