@@ -1,6 +1,6 @@
 # Breakout Blast
 
-![Breakout Blast Demo](https://github.com/adrocic/breakout-game-holiday-break/blob/main/Assets/Screenshot%202023-07-18%20192112.png)
+<img src="https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif" width="40" height="40" />
 
 # [Live Demo](https://jade-quokka-d2f928.netlify.app)
 
