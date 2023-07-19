@@ -10,6 +10,17 @@
 Welcome to Breakout Blast, a vibrant and exciting breakout game with a twist! Get ready to test your reflexes and strategic thinking as you aim to break through all the colorful blocks using a paddle and a bouncing ball. But be prepared for the unexpected, because this game is packed with power-ups that will take your gaming experience to the next level!
 
 ## Features
+# <span style="color: #FF0000;">Custom Assets and Hand Drawn Animations</span> : That's right, I drew up the assets and animations myself! It was so fun!
+
+## <span style="color: #FF7F00;">Colorful and Dynamic Visuals</span>
+
+### <span style="color: #FFFF00;">Intense Breakout Action</span>
+
+#### <span style="color: #00FF00;">Exciting Power-ups</span>
+
+##### <span style="color: #0000FF;">Multiple Levels</span>
+
+###### <span style="color: #4B0082;">Responsive Controls</span>
 ```diff - Custom Assets and Hand Drawn Animations ``` : That's right, I drew up the assets and animations myself! It was so fun!
 
 ```diff + Colorful and Dynamic Visuals```: Immerse yourself in a visually stunning world of vibrant colors and captivating animations that will make every moment of gameplay a feast for your eyes.
