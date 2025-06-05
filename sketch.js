@@ -59,7 +59,12 @@ let menuMusic;
 let menuGif;
 
 function preload() {
-    soundFormats('mp3', 'ogg');
+    // Ensure soundFormats exists in environments where the p5.sound
+    // library might not be available. This prevents a runtime error
+    // that stops asset loading when sound support is missing.
+    if (typeof soundFormats === 'function') {
+        soundFormats('mp3', 'ogg');
+    }
     //images
     backgroundImage = loadImage('Assets/background1.png')
     paddleImage = loadImage('Assets/paddle.png')
