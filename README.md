@@ -25,7 +25,12 @@ Welcome to Breakout Blast, a vibrant and exciting breakout game with a twist! Ge
 ```
 ## How to Play
 
+Press **Enter** on the animated title screen to start a new game.
+The menu features background music and simple animations.
+
 Spacebar to pause the game!
+
+When you win or lose, press **R** to restart.
 
 1. Use the left and right arrow keys or the A and D keys to move the paddle horizontally (or use your mouse).
 

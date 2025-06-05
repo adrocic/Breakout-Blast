@@ -21,6 +21,9 @@ let gameOver = false;
 let paused = false;
 let isDebugging = false;
 
+// Tracks the current screen: 'menu', 'game', 'gameover', or 'win'
+let gameState = 'menu';
+
 let backgroundImage;
 
 let paddleImage;
@@ -52,6 +55,8 @@ let flamethrowGif;
 
 let seaShanty;
 let smite;
+let menuMusic;
+let menuGif;
 
 function preload() {
     soundFormats('mp3', 'ogg');
@@ -78,10 +83,12 @@ function preload() {
     powerUpLaserImage6 = loadImage('Assets/power-up-laser6.png')
     powerUpLaserImage7 = loadImage('Assets/power-up-laser7.png')
     flamethrowGif = loadImage('Assets/New Piskel (1).gif')
+    menuGif = loadImage('Assets/Breakout Blast Gif.gif')
 
     //sounds
     seaShanty = loadSound('Assets/Sea_Shanty.mp3');
     smite = loadSound('Assets/Smite.mp3');
+    menuMusic = loadSound('Assets/Sea_Shanty.mp3');
 }
 
 // START BRICK CLASS
@@ -279,23 +286,34 @@ function setup() {
     noStroke();
     createCanvas(1920, 1080);
     background(backgroundImage, 1000)
-    seaShanty.play()
+
 
     // Create volume slider
     let volumeSlider = createInput(1, 'range');
     volumeSlider.input(function () {
-        audio.setVolume(this.value);
+        menuMusic.setVolume(this.value);
+        seaShanty.setVolume(this.value);
     });
 
-    // Initialize bricks
+    // Start with the menu displayed
+    menuMusic.setLoop(true);
+    menuMusic.play();
+    noLoop();
+}
+
+// Initializes or resets game entities and enters the playing state
+function startGame() {
+    bricks = [];
+    allBalls = [];
+    powerUps = [];
+
     for (let i = 0; i < BRICK_COLS; i++) {
         for (let j = 0; j < BRICK_ROWS; j++) {
-            const brick = new Brick(200 + i * 155, j * 65)
+            const brick = new Brick(200 + i * 155, j * 65);
             bricks.push(brick);
         }
     }
 
-    // Initialize paddle
     paddle = {
         x: width / 2 - PADDLE_WIDTH / 2,
         y: PADDLE_Y,
@@ -303,33 +321,68 @@ function setup() {
         height: PADDLE_HEIGHT
     };
 
-    // Initialize ball
-    allBalls.push(new Ball())
+    allBalls.push(new Ball());
+    menuMusic.stop();
+    seaShanty.setLoop(true);
+    seaShanty.play();
+    gameState = 'game';
+    paused = false;
+    loop();
 }
 
 function keyPressed() {
-    if (key === ' ') {  // Pressing the space key toggles the pause state
+    if (gameState === 'menu' && keyCode === ENTER) {
+        smite.play();
+        startGame();
+        return;
+    }
+
+    if (gameState === 'game' && key === ' ') {  // Toggle pause with spacebar
         paused = !paused;
         if (paused) {
             seaShanty.stop();
-            noLoop();  // Pause the game by stopping the draw() function from being called
+            noLoop();
         } else {
             seaShanty.play();
-            loop();  // Resume the game by starting the draw() function again
+            loop();
         }
+    }
+
+    if ((gameState === 'gameover' || gameState === 'win') && (key === 'r' || key === 'R')) {
+        smite.play();
+        startGame();
     }
 }
 
 function draw() {
-    background(backgroundImage)
-    fill(0, 0, 0, 100)
+    background(backgroundImage);
+
+    if (gameState === 'menu') {
+        if (!menuMusic.isPlaying()) menuMusic.play();
+        showMenu();
+        return;
+    }
+
+    if (gameState === 'gameover') {
+        if (!menuMusic.isPlaying()) menuMusic.play();
+        showGameOver();
+        return;
+    }
+
+    if (gameState === 'win') {
+        if (!menuMusic.isPlaying()) menuMusic.play();
+        showWin();
+        return;
+    }
+
+    fill(0, 0, 0, 100);
     if (paused) {
         fill(0, 0, 0, 200);  // Set the fill color to semi-transparent black
-        rect(0, 0, 1920, 1080);  // Draw a rectangle over the entire canvas
+        rect(0, 0, 1920, 1080);
         textAlign(CENTER, CENTER);
         textSize(32);
-        fill(255);  // Set the fill color to white
-        text('Paused', 1920 / 2, 1080 / 2);  // Draw the "Paused" text in the center of the canvas
+        fill(255);
+        text('Paused', 1920 / 2, 1080 / 2);
     }
 
     // Draw bricks
@@ -472,23 +525,17 @@ function draw() {
 
     // Game over
     if (!allBalls.length) {
+        seaShanty.stop();
+        menuMusic.play();
+        gameState = 'gameover';
         noLoop();
-        fill(0, 0, 0, 200);  // Set the fill color to semi-transparent black
-        rect(0, 0, 1920, 1080);  // Draw a rectangle over the entire canvas
-        textAlign(CENTER, CENTER);
-        textSize(64);
-        fill(200, 50, 50);  // Set the fill color to red
-        text('Game Over', 1920 / 2, 1080 / 2);  // Draw the "Paused" text in the center of the canvas
     }
 
     if (!bricks.length) {
+        seaShanty.stop();
+        menuMusic.play();
+        gameState = 'win';
         noLoop();
-        fill(0, 0, 0, 200);  // Set the fill color to semi-transparent black
-        rect(0, 0, 1920, 1080);  // Draw a rectangle over the entire canvas
-        textAlign(CENTER, CENTER);
-        textSize(64);
-        fill(100, 200, 50);  // Set the fill color to red
-        text('Game Won!', 1920 / 2, 1080 / 2);  // Draw the "Paused" text in the center of the canvas
     }
 }
 
@@ -506,4 +553,48 @@ const debug = (shape) => {
     }
     // Restore the original drawing style and matrix
     pop();
+}
+
+function showMenu() {
+    background(backgroundImage);
+    fill(0, 0, 0, 150);
+    rect(0, 0, width, height);
+    textAlign(CENTER, CENTER);
+    if (menuGif) {
+        image(menuGif, width / 2 - menuGif.width / 2, height / 2 - menuGif.height / 2 - 100);
+    }
+    textSize(64);
+    fill(255);
+    text('Breakout Blast', width / 2, height / 2 - 250);
+    let alpha = 200 + 55 * sin(frameCount * 0.1);
+    fill(255, alpha);
+    textSize(36);
+    text('Press ENTER to Start', width / 2, height - 200);
+    textSize(20);
+    fill(255, 200);
+    text('Press SPACE to Pause during the game', width / 2, height - 160);
+}
+
+function showGameOver() {
+    fill(0, 0, 0, 200);
+    rect(0, 0, width, height);
+    textAlign(CENTER, CENTER);
+    textSize(64);
+    const pulse = 150 + 105 * sin(frameCount * 0.1);
+    fill(200, pulse * 0.3, pulse * 0.3);
+    text('Game Over', width / 2, height / 2);
+    textSize(24);
+    text('Press R to Restart', width / 2, height / 2 + 50);
+}
+
+function showWin() {
+    fill(0, 0, 0, 200);
+    rect(0, 0, width, height);
+    textAlign(CENTER, CENTER);
+    textSize(64);
+    const pulse = 150 + 105 * sin(frameCount * 0.1);
+    fill(pulse * 0.3, 200, pulse * 0.3);
+    text('Game Won!', width / 2, height / 2);
+    textSize(24);
+    text('Press R to Restart', width / 2, height / 2 + 50);
 }
