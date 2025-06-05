@@ -59,7 +59,24 @@ let menuMusic;
 let menuGif;
 
 function preload() {
-    soundFormats('mp3', 'ogg');
+    // Ensure p5.sound APIs exist in environments where the sound
+    // library might not be available. This prevents runtime errors
+    // that stop asset loading when sound support is missing.
+    if (typeof soundFormats === 'function') {
+        soundFormats('mp3', 'ogg');
+    }
+
+    if (typeof loadSound !== 'function') {
+        // Provide a stub loadSound that returns an object with the
+        // sound methods used in this game.
+        window.loadSound = () => ({
+            play() { },
+            stop() { },
+            setLoop() { },
+            setVolume() { },
+            isPlaying() { return false; }
+        });
+    }
     //images
     backgroundImage = loadImage('Assets/background1.png')
     paddleImage = loadImage('Assets/paddle.png')
