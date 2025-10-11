@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <script src="https://cdn.jsdelivr.net/npm/p5@latest/lib/p5.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/p5@latest/lib/addons/p5.sound.min.js"></script>
+    <!-- Use a known-compatible version of p5.js and p5.sound. Loading the
+         unpinned "latest" build can introduce breaking changes (such as the
+         removal of registerMethod) that stop the sketch from running. -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/addons/p5.sound.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/planck@latest/dist/planck.min.js"></script>
     <script src="https://p5play.org/v3/p5.play.js"></script>
