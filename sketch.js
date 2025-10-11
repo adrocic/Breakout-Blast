@@ -13,6 +13,11 @@ const LASER_FRAME_DURATION_MS = 70;
 const LASER_PERSISTENCE_MS = 150;
 const LASER_SHOTS_PER_PICKUP = 3;
 
+const GRAVITY_WELL_DURATION_MS = 10000;
+const GRAVITY_WELL_PULL_FORCE = 900;
+const GRAVITY_WELL_CAPTURE_RADIUS = 90;
+const GRAVITY_NOVA_MAX_BRICKS = 4;
+
 // Declare variables for the start and end points of the laser
 let laser;
 let laserFrames = [];
@@ -25,6 +30,7 @@ let powerUps = [];
 let gameOver = false;
 let paused = false;
 let isDebugging = false;
+let gravityWell;
 
 // Tracks the current screen: 'menu', 'game', 'gameover', or 'win'
 let gameState = 'menu';
@@ -174,15 +180,41 @@ class PowerUp {
         this.type = type;
         this.rotation = 1;
         this.currentPuImage = powerUpExtraBallsImage;
+        this.spinAngle = 0;
+        this.pulsePhase = 0;
+
+        if (this.type === 'gravity well') {
+            this.currentPuImage = null;
+        }
     }
 
     draw() {
+        if (this.type === 'gravity well') {
+            drawGravityPowerUpIcon(this);
+            return;
+        }
+
         // subtracting 16 here to center the png on the hitbox
-        image(this.currentPuImage, this.x - 16, this.y - 16, this.diameter, this.diameter);
+        if (this.currentPuImage) {
+            image(this.currentPuImage, this.x - 16, this.y - 16, this.diameter, this.diameter);
+        } else {
+            push();
+            translate(this.x, this.y);
+            noStroke();
+            fill(255, 255, 255, 180);
+            ellipse(0, 0, this.diameter, this.diameter);
+            pop();
+        }
     }
 
     update() {
         this.y += 2;  // Move the power-up down the screen
+        if (this.type === 'gravity well') {
+            this.spinAngle = (this.spinAngle + 0.12) % (Math.PI * 2);
+            this.pulsePhase = (this.pulsePhase + 0.15) % (Math.PI * 2);
+            return;
+        }
+
         if (this.rotation > 6) {
             this.rotation = 0;
             return;
@@ -298,9 +330,267 @@ function collideRectRect(rect1, rect2) {
 }
 
 function spawnPowerUpFromBrick(brick) {
-    const powerUpType = Math.random() > 0.5 ? 'extra ball' : 'laser';
+    const powerUpTypes = ['extra ball', 'laser', 'gravity well'];
+    const powerUpType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
     const currentPowerUp = new PowerUp(brick.x + brick.width / 2, brick.y + brick.height / 2, powerUpType);
     powerUps.push(currentPowerUp);
+}
+
+function initializeGravityWell() {
+    gravityWell = {
+        active: false,
+        x: width / 2,
+        y: height * 0.18,
+        radius: GRAVITY_WELL_CAPTURE_RADIUS,
+        remainingTime: 0,
+        particles: [],
+        pulse: 0,
+        nova: null
+    };
+}
+
+function activateGravityWell() {
+    if (!gravityWell) {
+        initializeGravityWell();
+    }
+
+    gravityWell.active = true;
+    gravityWell.remainingTime = GRAVITY_WELL_DURATION_MS;
+    gravityWell.x = width / 2;
+    gravityWell.y = height * 0.18;
+    gravityWell.radius = GRAVITY_WELL_CAPTURE_RADIUS;
+    gravityWell.pulse = 0;
+    gravityWell.particles = createGravityParticles();
+    gravityWell.nova = null;
+}
+
+function createGravityParticles() {
+    const particles = [];
+    const count = 40;
+
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            angle: Math.random() * Math.PI * 2,
+            baseRadius: GRAVITY_WELL_CAPTURE_RADIUS * (0.4 + Math.random() * 0.6),
+            radialRange: 12 + Math.random() * 24,
+            size: 6 + Math.random() * 7,
+            angularVelocity: 0.9 + Math.random() * 1.4,
+            phase: Math.random() * Math.PI * 2,
+            alpha: 150 + Math.random() * 80,
+            colorOffset: Math.random() * 60
+        });
+    }
+
+    return particles;
+}
+
+function updateGravityWell() {
+    if (!gravityWell) {
+        return;
+    }
+
+    const dt = typeof deltaTime === 'number' ? deltaTime : 16.67;
+    const dtSeconds = dt / 1000;
+
+    if (gravityWell.active) {
+        gravityWell.remainingTime -= dt;
+
+        if (gravityWell.remainingTime <= 0) {
+            gravityWell.active = false;
+            gravityWell.particles = [];
+        } else {
+            gravityWell.pulse = (gravityWell.pulse + dtSeconds * 3.2) % (Math.PI * 2);
+            gravityWell.particles.forEach(particle => {
+                particle.angle += particle.angularVelocity * dtSeconds;
+            });
+
+            for (const ball of allBalls) {
+                applyGravityWellForce(ball, dtSeconds);
+
+                if (!gravityWell || !gravityWell.active) {
+                    break;
+                }
+
+                const dx = gravityWell.x - ball.x;
+                const dy = gravityWell.y - ball.y;
+                const distance = Math.hypot(dx, dy);
+
+                if (distance <= gravityWell.radius) {
+                    triggerGravityNova(ball);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (gravityWell && gravityWell.nova) {
+        gravityWell.nova.timer -= dt;
+        gravityWell.nova.radius += gravityWell.nova.expansionRate * dtSeconds;
+
+        if (gravityWell.nova.timer <= 0) {
+            gravityWell.nova = null;
+        }
+    }
+}
+
+function applyGravityWellForce(ball, dtSeconds) {
+    if (!gravityWell || !gravityWell.active) {
+        return;
+    }
+
+    const dx = gravityWell.x - ball.x;
+    const dy = gravityWell.y - ball.y;
+    const distance = Math.hypot(dx, dy) || 0.0001;
+    const normalizedX = dx / distance;
+    const normalizedY = dy / distance;
+    const falloff = Math.max(distance, GRAVITY_WELL_CAPTURE_RADIUS * 0.9);
+    const acceleration = (GRAVITY_WELL_PULL_FORCE / falloff) * dtSeconds;
+
+    ball.xspeed += normalizedX * acceleration;
+    ball.yspeed += normalizedY * acceleration;
+
+    const maxSpeed = 22;
+    const speedMagnitude = Math.hypot(ball.xspeed, ball.yspeed);
+    if (speedMagnitude > maxSpeed) {
+        const scale = maxSpeed / speedMagnitude;
+        ball.xspeed *= scale;
+        ball.yspeed *= scale;
+    }
+}
+
+function triggerGravityNova(ball) {
+    if (!gravityWell || !gravityWell.active) {
+        return;
+    }
+
+    gravityWell.active = false;
+    gravityWell.remainingTime = 0;
+    gravityWell.particles = [];
+
+    const novaDuration = 600;
+    gravityWell.nova = {
+        radius: gravityWell.radius,
+        timer: novaDuration,
+        duration: novaDuration,
+        expansionRate: 420
+    };
+
+    destroyNearestBricks({ x: gravityWell.x, y: gravityWell.y }, GRAVITY_NOVA_MAX_BRICKS);
+
+    const burstAngle = (Math.random() * Math.PI / 2) - Math.PI / 4;
+    const burstSpeed = 16;
+    ball.x = gravityWell.x;
+    ball.y = gravityWell.y + gravityWell.radius + ball.diameter / 2 + 10;
+    ball.xspeed = Math.sin(burstAngle) * burstSpeed;
+    ball.yspeed = Math.abs(Math.cos(burstAngle) * burstSpeed) + 8;
+    ball.currentBallImage = ballFullPowerImage;
+}
+
+function destroyNearestBricks(center, maxCount) {
+    if (!bricks.length) {
+        return;
+    }
+
+    const bricksByDistance = bricks
+        .map(brick => ({
+            brick,
+            dist: Math.hypot(
+                center.x - (brick.x + brick.width / 2),
+                center.y - (brick.y + brick.height / 2)
+            )
+        }))
+        .sort((a, b) => a.dist - b.dist);
+
+    const targets = bricksByDistance.slice(0, Math.min(maxCount, bricksByDistance.length));
+
+    targets.forEach(target => {
+        destroyBrick(target.brick);
+    });
+}
+
+function destroyBrick(brick) {
+    const index = bricks.indexOf(brick);
+    if (index === -1) {
+        return;
+    }
+
+    if (brick.powerUp) {
+        spawnPowerUpFromBrick(brick);
+        brick.powerUp = false;
+    }
+
+    bricks.splice(index, 1);
+}
+
+function drawGravityWell() {
+    if (!gravityWell || (!gravityWell.active && !gravityWell.nova)) {
+        return;
+    }
+
+    push();
+    translate(gravityWell.x, gravityWell.y);
+
+    if (gravityWell.active) {
+        const pulsate = 1 + 0.08 * Math.sin(gravityWell.pulse || 0);
+        const outerRadius = gravityWell.radius * 2.2 * pulsate;
+        const innerRadius = gravityWell.radius * 1.4;
+
+        noStroke();
+        fill(20, 20, 40, 160);
+        ellipse(0, 0, outerRadius, outerRadius);
+
+        fill(0, 0, 0, 220);
+        ellipse(0, 0, innerRadius, innerRadius);
+
+        gravityWell.particles.forEach(particle => {
+            const radius = particle.baseRadius + Math.sin((gravityWell.pulse || 0) + particle.phase) * particle.radialRange;
+            const x = Math.cos(particle.angle) * radius;
+            const y = Math.sin(particle.angle) * radius;
+            const color = 150 + particle.colorOffset;
+            fill(80, 80, color, particle.alpha);
+            ellipse(x, y, particle.size, particle.size);
+        });
+    }
+
+    if (gravityWell.nova) {
+        const progress = Math.max(gravityWell.nova.timer, 0) / gravityWell.nova.duration;
+        const radius = gravityWell.nova.radius;
+        noFill();
+        stroke(255, 220, 160, 180 * progress);
+        strokeWeight(6);
+        ellipse(0, 0, radius * 2.2, radius * 2.2);
+
+        noStroke();
+        fill(255, 180, 80, 140 * progress);
+        ellipse(0, 0, radius * 1.2, radius * 1.2);
+    }
+
+    pop();
+}
+
+function drawGravityPowerUpIcon(powerUp) {
+    push();
+    translate(powerUp.x, powerUp.y);
+    rotate(powerUp.spinAngle || 0);
+    noStroke();
+
+    const pulseScale = 1 + 0.12 * Math.sin(powerUp.pulsePhase || 0);
+    const baseSize = powerUp.diameter * 0.9 * pulseScale;
+
+    fill(30, 30, 50, 200);
+    ellipse(0, 0, baseSize, baseSize);
+
+    fill(0, 0, 0, 220);
+    ellipse(0, 0, baseSize * 0.6, baseSize * 0.6);
+
+    for (let i = 0; i < 3; i++) {
+        const armAlpha = 140 - i * 30;
+        fill(120, 120, 255, armAlpha);
+        ellipse(baseSize * 0.35, 0, baseSize * 0.4, baseSize * 0.18);
+        rotate(Math.PI * 2 / 3);
+    }
+
+    pop();
 }
 
 function setup() {
@@ -345,6 +635,7 @@ function startGame() {
     laser.frameIndex = 0;
     laser.frameTimer = 0;
     laser.holdTimer = 0;
+    initializeGravityWell();
 
     for (let i = 0; i < BRICK_COLS; i++) {
         for (let j = 0; j < BRICK_ROWS; j++) {
@@ -421,6 +712,7 @@ function draw() {
     }
 
     updateLaserState();
+    updateGravityWell();
 
     fill(0, 0, 0, 100);
     if (paused) {
@@ -475,6 +767,7 @@ function draw() {
     }
 
     drawLaser();
+    drawGravityWell();
     drawLaserHUD();
 
     // Draw Power Ups
@@ -517,6 +810,8 @@ function draw() {
             if (pu.rotation === 6) {
                 pu.currentPuImage = powerUpExtraBallsImage6;
             }
+        } else if (pu.type === 'gravity well') {
+            pu.currentPuImage = null;
         }
 
         if (pu.checkCollision(paddle)) {
@@ -532,6 +827,8 @@ function draw() {
                 laser.frameIndex = 0;
                 laser.frameTimer = 0;
                 laser.holdTimer = 0;
+            } else if (pu.type === 'gravity well') {
+                activateGravityWell();
             }
 
             let temp = powerUps.filter(item => {
