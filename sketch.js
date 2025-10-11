@@ -198,6 +198,59 @@ class PowerUp {
 
 // END POWER UP CLASS
 
+// START PADDLE CLASS
+
+class Paddle {
+    constructor() {
+        this.width = PADDLE_WIDTH;
+        this.height = PADDLE_HEIGHT;
+        this.x = width / 2 - this.width / 2;
+        this.y = PADDLE_Y;
+        this.bounceStartTime = null;
+        this.bounceDuration = 200; // milliseconds
+        this.bounceMagnitude = 18;
+        this.scaleMagnitudeX = 0.08;
+        this.scaleMagnitudeY = 0.12;
+    }
+
+    update() {
+        this.x = constrain(mouseX - this.width / 2, 0, width - this.width);
+    }
+
+    startBounce() {
+        this.bounceStartTime = millis();
+    }
+
+    draw() {
+        let offsetY = 0;
+        let scaleX = 1;
+        let scaleY = 1;
+
+        if (this.bounceStartTime !== null) {
+            const elapsed = millis() - this.bounceStartTime;
+            if (elapsed < this.bounceDuration) {
+                const progress = elapsed / this.bounceDuration;
+                const bounceWave = Math.sin(progress * Math.PI);
+                offsetY = bounceWave * this.bounceMagnitude;
+                scaleX = 1 + bounceWave * this.scaleMagnitudeX;
+                scaleY = 1 - bounceWave * this.scaleMagnitudeY;
+            } else {
+                this.bounceStartTime = null;
+            }
+        }
+
+        push();
+        translate(this.x + this.width / 2, this.y + this.height / 2 + offsetY);
+        scale(scaleX, scaleY);
+        imageMode(CENTER);
+        image(paddleImage, 0, 0, this.width, this.height);
+        imageMode(CORNER);
+        pop();
+    }
+}
+
+// END PADDLE CLASS
+
 // START BALL CLASS
 
 class Ball {
@@ -287,6 +340,9 @@ class Ball {
                 this.xspeed -= ballPaddleCollideMultiplier;
             }
             this.startBounce();
+            if (typeof paddle.startBounce === 'function') {
+                paddle.startBounce();
+            }
             return true;
         }
         return false;  // Return false to indicate that the paddle was not hit
@@ -362,12 +418,8 @@ function startGame() {
         }
     }
 
-    paddle = {
-        x: width / 2 - PADDLE_WIDTH / 2,
-        y: PADDLE_Y,
-        width: PADDLE_WIDTH,
-        height: PADDLE_HEIGHT
-    };
+    paddle = new Paddle();
+    paddle.update();
 
     allBalls.push(new Ball());
     menuMusic.stop();
@@ -421,6 +473,10 @@ function draw() {
         if (!menuMusic.isPlaying()) menuMusic.play();
         showWin();
         return;
+    }
+
+    if (paddle && typeof paddle.update === 'function') {
+        paddle.update();
     }
 
     updateLaserState();
@@ -529,7 +585,11 @@ function draw() {
 
     // Draw paddle
     fill(0);
-    image(paddleImage, paddle.x, paddle.y, paddle.width, paddle.height);
+    if (typeof paddle.draw === 'function') {
+        paddle.draw();
+    } else {
+        image(paddleImage, paddle.x, paddle.y, paddle.width, paddle.height);
+    }
     isDebugging && debug(paddle);
 
     // Draw balls
