@@ -209,6 +209,9 @@ class Ball {
         this.yspeed = -5;
         this.currentBallImage = ballImage;
         this.id = Math.floor(Math.random() * Math.floor(Math.random() * Date.now()))
+        this.bounceStartTime = null;
+        this.bounceDuration = 180; // milliseconds
+        this.bounceMagnitude = 10;
     }
 
     move() {
@@ -243,7 +246,31 @@ class Ball {
     }
 
     draw() {
-        image(this.currentBallImage, this.x - 19, this.y - 19, this.diameter, this.diameter);
+        let offsetY = 0;
+        let scaleAmount = 1;
+
+        if (this.bounceStartTime !== null) {
+            const elapsed = millis() - this.bounceStartTime;
+            if (elapsed < this.bounceDuration) {
+                const progress = elapsed / this.bounceDuration;
+                const bounceWave = Math.sin(progress * Math.PI);
+                offsetY = -bounceWave * this.bounceMagnitude;
+                scaleAmount = 1 + bounceWave * 0.15;
+            } else {
+                this.bounceStartTime = null;
+            }
+        }
+
+        push();
+        translate(this.x, this.y + offsetY);
+        const renderDiameter = this.diameter * scaleAmount;
+        const halfRender = renderDiameter / 2;
+        image(this.currentBallImage, -halfRender, -halfRender, renderDiameter, renderDiameter);
+        pop();
+    }
+
+    startBounce() {
+        this.bounceStartTime = millis();
     }
 
     checkCollision(paddle) {
@@ -259,6 +286,7 @@ class Ball {
             } else {
                 this.xspeed -= ballPaddleCollideMultiplier;
             }
+            this.startBounce();
             return true;
         }
         return false;  // Return false to indicate that the paddle was not hit
