@@ -7,12 +7,15 @@ const PADDLE_HEIGHT = 50;
 const PADDLE_Y = 1000;
 
 const BALL_DIAMETER = 38;
-const LASER_BEAM_WIDTH = 140;
-const LASER_GROWTH_RATE = 120;
-const LASER_DURATION_MS = 5000;
+const LASER_BEAM_WIDTH = 120;
+const LASER_GROWTH_RATE = 4200;
+const LASER_FRAME_DURATION_MS = 70;
+const LASER_PERSISTENCE_MS = 150;
+const LASER_SHOTS_PER_PICKUP = 3;
 
 // Declare variables for the start and end points of the laser
 let laser;
+let laserFrames = [];
 
 // Global variables
 let bricks = [];
@@ -52,8 +55,6 @@ let powerUpLaserImage4;
 let powerUpLaserImage5;
 let powerUpLaserImage6;
 let powerUpLaserImage7;
-
-let flamethrowGif;
 
 let seaShanty;
 let smite;
@@ -101,7 +102,10 @@ function preload() {
     powerUpLaserImage5 = loadImage('Assets/power-up-laser5.png')
     powerUpLaserImage6 = loadImage('Assets/power-up-laser6.png')
     powerUpLaserImage7 = loadImage('Assets/power-up-laser7.png')
-    flamethrowGif = loadImage('Assets/New Piskel (1).gif')
+    laserFrames = [
+        loadImage('Assets/laser.png'),
+        loadImage('Assets/laser2.png')
+    ];
     menuGif = loadImage('Assets/Breakout Blast Gif.gif')
 
     //sounds
@@ -148,8 +152,8 @@ class Brick {
 
             // If the brick has a power-up, create a new power-up object and add it to the game
             if (this.health === 0 && this.powerUp) {
-                const currentPowerUp = new PowerUp(this.x + this.width / 2, this.y + this.height / 2, Math.random() > 0.5 ? 'extra ball' : 'laser');
-                powerUps.push(currentPowerUp);
+                spawnPowerUpFromBrick(this);
+                this.powerUp = false;
             }
             return true;  // Return true to indicate that the brick was hit
         }
@@ -293,15 +297,24 @@ function collideRectRect(rect1, rect2) {
     return false;
 }
 
+function spawnPowerUpFromBrick(brick) {
+    const powerUpType = Math.random() > 0.5 ? 'extra ball' : 'laser';
+    const currentPowerUp = new PowerUp(brick.x + brick.width / 2, brick.y + brick.height / 2, powerUpType);
+    powerUps.push(currentPowerUp);
+}
+
 function setup() {
     // Initialize the start and end points of the laser
     laser = {
-        active: false,
+        charges: 0,
+        isFiring: false,
         width: LASER_BEAM_WIDTH,
         height: 0,
         x: 0,
         y: 0,
-        expiresAt: 0
+        frameIndex: 0,
+        frameTimer: 0,
+        holdTimer: 0
     }
     noStroke();
     createCanvas(1920, 1080);
@@ -326,6 +339,12 @@ function startGame() {
     bricks = [];
     allBalls = [];
     powerUps = [];
+    laser.charges = 0;
+    laser.isFiring = false;
+    laser.height = 0;
+    laser.frameIndex = 0;
+    laser.frameTimer = 0;
+    laser.holdTimer = 0;
 
     for (let i = 0; i < BRICK_COLS; i++) {
         for (let j = 0; j < BRICK_ROWS; j++) {
@@ -374,6 +393,12 @@ function keyPressed() {
     }
 }
 
+function mousePressed() {
+    if (mouseButton === LEFT) {
+        attemptLaserFire();
+    }
+}
+
 function draw() {
     background(backgroundImage);
 
@@ -408,32 +433,49 @@ function draw() {
     }
 
     // Draw bricks
-    bricks.forEach(brick => {
-        // Check for laser collision with bricks
-        if (laser.active && collideRectRect(laser, brick)) {
-            console.log("Laser collided with object!");
+    for (let i = bricks.length - 1; i >= 0; i--) {
+        const brick = bricks[i];
+        let shouldRemove = false;
+
+        if (laser.isFiring && collideRectRect(laser, brick)) {
+            brick.health = 0;
+            shouldRemove = true;
         }
-        allBalls.forEach(ball => {
-            if (brick.checkCollision(ball)) {
-                if (brick.health === 0) {
-                    let temp = bricks.filter(item => {
-                        return item.id != brick.id;
-                    })
-                    bricks = temp;
+
+        if (!shouldRemove) {
+            for (const ball of allBalls) {
+                if (!brick.checkCollision(ball)) {
+                    continue;
                 }
+
                 if (brick.health === 1) {
                     brick.currentBrickImage = brick1Image;
-                }
-                if (brick.health === 2) {
+                } else if (brick.health === 2) {
                     brick.currentBrickImage = brick2Image;
                 }
+
+                if (brick.health <= 0) {
+                    shouldRemove = true;
+                    break;
+                }
             }
-        })
+        }
+
+        if (shouldRemove) {
+            if (brick.powerUp) {
+                spawnPowerUpFromBrick(brick);
+                brick.powerUp = false;
+            }
+            bricks.splice(i, 1);
+            continue;
+        }
+
         brick.draw();
         isDebugging && debug(brick);
-    })
+    }
 
     drawLaser();
+    drawLaserHUD();
 
     // Draw Power Ups
     powerUps.forEach(pu => {
@@ -484,9 +526,12 @@ function draw() {
                 extraBall.xspeed = Math.random() * (Math.round(Math.random()) ? 1 : -1);
                 allBalls.push(extraBall);
             } else if (pu.type === 'laser') {
-                laser.active = true;
+                laser.charges += LASER_SHOTS_PER_PICKUP;
+                laser.isFiring = false;
                 laser.height = 0;
-                laser.expiresAt = millis() + LASER_DURATION_MS;
+                laser.frameIndex = 0;
+                laser.frameTimer = 0;
+                laser.holdTimer = 0;
             }
 
             let temp = powerUps.filter(item => {
@@ -558,14 +603,30 @@ function draw() {
     }
 }
 
-function updateLaserState() {
-    if (!laser.active) {
-        laser.height = 0;
+function attemptLaserFire() {
+    if (gameState !== 'game' || paused || !paddle) {
         return;
     }
 
-    if (millis() >= laser.expiresAt) {
-        laser.active = false;
+    if (laser.charges <= 0 || laser.isFiring) {
+        return;
+    }
+
+    laser.isFiring = true;
+    laser.charges -= 1;
+    laser.height = 0;
+    laser.frameIndex = 0;
+    laser.frameTimer = 0;
+    laser.holdTimer = LASER_PERSISTENCE_MS;
+    laser.width = LASER_BEAM_WIDTH;
+    const paddleCenterX = paddle.x + PADDLE_WIDTH / 2;
+    laser.x = paddleCenterX - laser.width / 2;
+    laser.y = paddle.y;
+    smite.play();
+}
+
+function updateLaserState() {
+    if (!laser.isFiring) {
         laser.height = 0;
         return;
     }
@@ -581,26 +642,89 @@ function updateLaserState() {
     const paddleCenterX = paddle.x + PADDLE_WIDTH / 2;
     laser.x = paddleCenterX - laser.width / 2;
     laser.y = paddle.y - laser.height;
+
+    if (laserFrames.length) {
+        laser.frameTimer += deltaTime;
+        if (laser.frameTimer >= LASER_FRAME_DURATION_MS) {
+            laser.frameTimer = 0;
+            laser.frameIndex = (laser.frameIndex + 1) % laserFrames.length;
+        }
+    }
+
+    if (laser.height >= maxHeight) {
+        laser.holdTimer -= deltaTime;
+        if (laser.holdTimer <= 0) {
+            laser.isFiring = false;
+            laser.height = 0;
+            laser.holdTimer = 0;
+        }
+    }
 }
 
 function drawLaser() {
-    if (!laser.active || !paddle) {
+    if (!laser.isFiring || !paddle) {
         return;
     }
 
     push();
     noStroke();
-    fill(255, 120, 0, 160);
-    rect(laser.x, laser.y, laser.width, laser.height);
+    fill(255, 120, 0, 90);
+    const coreWidth = laser.width * 0.35;
+    const coreX = laser.x + (laser.width - coreWidth) / 2;
+    rect(coreX, laser.y, coreWidth, laser.height);
     pop();
 
-    if (flamethrowGif) {
-        const flameWidth = LASER_BEAM_WIDTH * 1.8;
-        const flameHeight = 320;
-        const flameX = paddle.x + PADDLE_WIDTH / 2 - flameWidth / 2;
-        const flameY = laser.y - flameHeight * 0.25;
-        image(flamethrowGif, flameX, flameY, flameWidth, flameHeight);
+    const frame = laserFrames.length ? laserFrames[laser.frameIndex % laserFrames.length] : null;
+    if (frame) {
+        image(frame, laser.x, laser.y, laser.width, laser.height);
+        const baseHeight = Math.min(160, paddle.height * 2.5);
+        image(frame, laser.x, paddle.y - baseHeight, laser.width, baseHeight);
+    } else {
+        push();
+        noStroke();
+        fill(255, 180, 0, 140);
+        rect(laser.x, laser.y, laser.width, laser.height);
+        pop();
     }
+}
+
+function drawLaserHUD() {
+    if (gameState !== 'game') {
+        return;
+    }
+
+    const shouldShowCharges = laser.charges > 0 || laser.isFiring;
+    if (!shouldShowCharges) {
+        return;
+    }
+
+    push();
+    textAlign(LEFT, TOP);
+    textSize(28);
+    fill(255);
+    text('Laser Charges', 40, 40);
+
+    const iconHeight = 48;
+    const iconWidth = 20;
+    for (let i = 0; i < laser.charges; i++) {
+        const iconX = 40 + i * (iconWidth + 10);
+        const iconY = 80;
+        if (laserFrames.length) {
+            const frame = laserFrames[i % laserFrames.length];
+            image(frame, iconX, iconY, iconWidth, iconHeight);
+        } else {
+            fill(255, 160, 0, 160);
+            rect(iconX, iconY, iconWidth, iconHeight);
+        }
+    }
+
+    if (laser.isFiring) {
+        fill(255, 200, 0);
+        textSize(20);
+        text('FIRING!', 40, 80 + iconHeight + 10);
+    }
+
+    pop();
 }
 
 const debug = (shape) => {
