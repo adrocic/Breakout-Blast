@@ -7,10 +7,12 @@ const PADDLE_HEIGHT = 50;
 const PADDLE_Y = 1000;
 
 const BALL_DIAMETER = 38;
+const LASER_BEAM_WIDTH = 140;
+const LASER_GROWTH_RATE = 120;
+const LASER_DURATION_MS = 5000;
 
 // Declare variables for the start and end points of the laser
 let laser;
-let laserSprite;
 
 // Global variables
 let bricks = [];
@@ -295,11 +297,12 @@ function setup() {
     // Initialize the start and end points of the laser
     laser = {
         active: false,
-        width: 100,
-        height: 20,
-        update: () => this.height += 2
+        width: LASER_BEAM_WIDTH,
+        height: 0,
+        x: 0,
+        y: 0,
+        expiresAt: 0
     }
-    laserSprite = createSprite(50, 50, 10, 50)
     noStroke();
     createCanvas(1920, 1080);
     background(backgroundImage, 1000)
@@ -392,6 +395,8 @@ function draw() {
         return;
     }
 
+    updateLaserState();
+
     fill(0, 0, 0, 100);
     if (paused) {
         fill(0, 0, 0, 200);  // Set the fill color to semi-transparent black
@@ -405,7 +410,7 @@ function draw() {
     // Draw bricks
     bricks.forEach(brick => {
         // Check for laser collision with bricks
-        if (collideRectRect(laser, brick)) {
+        if (laser.active && collideRectRect(laser, brick)) {
             console.log("Laser collided with object!");
         }
         allBalls.forEach(ball => {
@@ -427,6 +432,8 @@ function draw() {
         brick.draw();
         isDebugging && debug(brick);
     })
+
+    drawLaser();
 
     // Draw Power Ups
     powerUps.forEach(pu => {
@@ -478,13 +485,8 @@ function draw() {
                 allBalls.push(extraBall);
             } else if (pu.type === 'laser') {
                 laser.active = true;
-                laserSprite.x = paddle.x
-                laserSprite.y = paddle.y - 50
-                laserSprite.addImage(flamethrowGif)
-                setTimeout(() => {
-                    laser.active = false;
-                    laserSprite.remove();
-                }, 5000)
+                laser.height = 0;
+                laser.expiresAt = millis() + LASER_DURATION_MS;
             }
 
             let temp = powerUps.filter(item => {
@@ -553,6 +555,51 @@ function draw() {
         menuMusic.play();
         gameState = 'win';
         noLoop();
+    }
+}
+
+function updateLaserState() {
+    if (!laser.active) {
+        laser.height = 0;
+        return;
+    }
+
+    if (millis() >= laser.expiresAt) {
+        laser.active = false;
+        laser.height = 0;
+        return;
+    }
+
+    if (!paddle) {
+        return;
+    }
+
+    const maxHeight = paddle.y;
+    const growth = LASER_GROWTH_RATE * (deltaTime / 1000);
+    laser.height = Math.min(laser.height + growth, maxHeight);
+    laser.width = LASER_BEAM_WIDTH;
+    const paddleCenterX = paddle.x + PADDLE_WIDTH / 2;
+    laser.x = paddleCenterX - laser.width / 2;
+    laser.y = paddle.y - laser.height;
+}
+
+function drawLaser() {
+    if (!laser.active || !paddle) {
+        return;
+    }
+
+    push();
+    noStroke();
+    fill(255, 120, 0, 160);
+    rect(laser.x, laser.y, laser.width, laser.height);
+    pop();
+
+    if (flamethrowGif) {
+        const flameWidth = LASER_BEAM_WIDTH * 1.8;
+        const flameHeight = 320;
+        const flameX = paddle.x + PADDLE_WIDTH / 2 - flameWidth / 2;
+        const flameY = laser.y - flameHeight * 0.25;
+        image(flamethrowGif, flameX, flameY, flameWidth, flameHeight);
     }
 }
 
