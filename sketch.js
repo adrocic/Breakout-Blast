@@ -207,10 +207,10 @@ class Paddle {
         this.x = width / 2 - this.width / 2;
         this.y = PADDLE_Y;
         this.bounceStartTime = null;
-        this.bounceDuration = 200; // milliseconds
-        this.bounceMagnitude = 18;
-        this.scaleMagnitudeX = 0.08;
-        this.scaleMagnitudeY = 0.12;
+        this.bounceDuration = 140; // milliseconds
+        this.bounceMagnitude = 12;
+        this.scaleMagnitudeX = 0.06;
+        this.scaleMagnitudeY = 0.09;
     }
 
     update() {
@@ -263,8 +263,8 @@ class Ball {
         this.currentBallImage = ballImage;
         this.id = Math.floor(Math.random() * Math.floor(Math.random() * Date.now()))
         this.bounceStartTime = null;
-        this.bounceDuration = 180; // milliseconds
-        this.bounceMagnitude = 10;
+        this.bounceDuration = 130; // milliseconds
+        this.bounceMagnitude = 7;
     }
 
     move() {
@@ -308,7 +308,7 @@ class Ball {
                 const progress = elapsed / this.bounceDuration;
                 const bounceWave = Math.sin(progress * Math.PI);
                 offsetY = -bounceWave * this.bounceMagnitude;
-                scaleAmount = 1 + bounceWave * 0.15;
+                scaleAmount = 1 + bounceWave * 0.12;
             } else {
                 this.bounceStartTime = null;
             }
