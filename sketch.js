@@ -10,6 +10,11 @@ const BALL_DIAMETER = 38;
 const LASER_BEAM_WIDTH = 140;
 const LASER_GROWTH_RATE = 120;
 const LASER_DURATION_MS = 5000;
+const GRAVITY_DURATION_MS = 10000;
+const GRAVITY_PULL_STRENGTH = 0.00045;
+const GRAVITY_TARGET_Y = 140;
+const GRAVITY_CAPTURE_RADIUS = 70;
+const GRAVITY_MAX_BRICKS_DESTROYED = 4;
 
 // Declare variables for the start and end points of the laser
 let laser;
@@ -22,6 +27,8 @@ let powerUps = [];
 let gameOver = false;
 let paused = false;
 let isDebugging = false;
+let gravityField = null;
+let novaEffect = null;
 
 // Tracks the current screen: 'menu', 'game', 'gameover', or 'win'
 let gameState = 'menu';
@@ -52,6 +59,7 @@ let powerUpLaserImage4;
 let powerUpLaserImage5;
 let powerUpLaserImage6;
 let powerUpLaserImage7;
+let gravityPowerUpFrames = [];
 
 let flamethrowGif;
 
@@ -148,7 +156,7 @@ class Brick {
 
             // If the brick has a power-up, create a new power-up object and add it to the game
             if (this.health === 0 && this.powerUp) {
-                const currentPowerUp = new PowerUp(this.x + this.width / 2, this.y + this.height / 2, Math.random() > 0.5 ? 'extra ball' : 'laser');
+                const currentPowerUp = new PowerUp(this.x + this.width / 2, this.y + this.height / 2, getRandomPowerUpType());
                 powerUps.push(currentPowerUp);
             }
             return true;  // Return true to indicate that the brick was hit
@@ -170,11 +178,15 @@ class PowerUp {
         this.type = type;
         this.rotation = 1;
         this.currentPuImage = powerUpExtraBallsImage;
+        if (this.type === 'gravity' && gravityPowerUpFrames.length) {
+            this.currentPuImage = gravityPowerUpFrames[0];
+        }
     }
 
     draw() {
         // subtracting 16 here to center the png on the hitbox
-        image(this.currentPuImage, this.x - 16, this.y - 16, this.diameter, this.diameter);
+        const offset = this.diameter / 2;
+        image(this.currentPuImage, this.x - offset, this.y - offset, this.diameter, this.diameter);
     }
 
     update() {
@@ -307,6 +319,8 @@ function setup() {
     createCanvas(1920, 1080);
     background(backgroundImage, 1000)
 
+    createGravityPowerUpFrames();
+
 
     // Create volume slider
     let volumeSlider = createInput(1, 'range');
@@ -321,11 +335,18 @@ function setup() {
     noLoop();
 }
 
+function getRandomPowerUpType() {
+    const powerUpTypes = ['extra ball', 'laser', 'gravity'];
+    return powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+}
+
 // Initializes or resets game entities and enters the playing state
 function startGame() {
     bricks = [];
     allBalls = [];
     powerUps = [];
+    gravityField = null;
+    novaEffect = null;
 
     for (let i = 0; i < BRICK_COLS; i++) {
         for (let j = 0; j < BRICK_ROWS; j++) {
@@ -396,6 +417,7 @@ function draw() {
     }
 
     updateLaserState();
+    updateGravityField();
 
     fill(0, 0, 0, 100);
     if (paused) {
@@ -433,6 +455,7 @@ function draw() {
         isDebugging && debug(brick);
     })
 
+    drawGravityField();
     drawLaser();
 
     // Draw Power Ups
@@ -475,6 +498,9 @@ function draw() {
             if (pu.rotation === 6) {
                 pu.currentPuImage = powerUpExtraBallsImage6;
             }
+        } else if (pu.type === 'gravity') {
+            const frameIndex = Math.max(0, Math.min(gravityPowerUpFrames.length - 1, Math.floor(pu.rotation) - 1));
+            pu.currentPuImage = gravityPowerUpFrames[frameIndex] || gravityPowerUpFrames[0];
         }
 
         if (pu.checkCollision(paddle)) {
@@ -487,6 +513,8 @@ function draw() {
                 laser.active = true;
                 laser.height = 0;
                 laser.expiresAt = millis() + LASER_DURATION_MS;
+            } else if (pu.type === 'gravity') {
+                activateGravityField();
             }
 
             let temp = powerUps.filter(item => {
@@ -513,6 +541,7 @@ function draw() {
 
     // Move balls
     allBalls.forEach(ball => {
+        applyGravityToBall(ball);
         ball.move();
     })
 
@@ -601,6 +630,199 @@ function drawLaser() {
         const flameY = laser.y - flameHeight * 0.25;
         image(flamethrowGif, flameX, flameY, flameWidth, flameHeight);
     }
+}
+
+function activateGravityField() {
+    const centerX = width / 2;
+    const centerY = GRAVITY_TARGET_Y;
+    const now = millis();
+    gravityField = {
+        active: true,
+        x: centerX,
+        y: centerY,
+        radius: GRAVITY_CAPTURE_RADIUS,
+        expiresAt: now + GRAVITY_DURATION_MS,
+        swirlAngle: 0,
+        hasExploded: false
+    };
+    novaEffect = null;
+}
+
+function createGravityPowerUpFrames() {
+    gravityPowerUpFrames = [];
+    const frameCount = 6;
+    for (let i = 0; i < frameCount; i++) {
+        const g = createGraphics(48, 48);
+        g.push();
+        g.translate(g.width / 2, g.height / 2);
+        const baseAngle = (i / frameCount) * TWO_PI;
+        for (let ring = 0; ring < 4; ring++) {
+            const radius = 6 + ring * 5;
+            const hue = map(ring, 0, 3, 60, 160);
+            g.push();
+            g.rotate(baseAngle + ring * 0.35);
+            g.noFill();
+            g.stroke(30, 30, hue, 200);
+            g.strokeWeight(2);
+            g.ellipse(radius, 0, 16 - ring * 2, 16 - ring * 2);
+            g.pop();
+        }
+        g.noStroke();
+        g.fill(20, 20, 30, 220);
+        g.ellipse(0, 0, 16);
+        g.pop();
+        gravityPowerUpFrames.push(g);
+    }
+}
+
+function updateGravityField() {
+    if (gravityField && gravityField.active) {
+        gravityField.swirlAngle += deltaTime * 0.004;
+        if (millis() >= gravityField.expiresAt) {
+            gravityField.active = false;
+        }
+    }
+
+    if (novaEffect && novaEffect.active) {
+        const elapsed = millis() - novaEffect.start;
+        if (elapsed >= novaEffect.duration) {
+            novaEffect.active = false;
+            novaEffect = null;
+        } else {
+            const progress = constrain(elapsed / novaEffect.duration, 0, 1);
+            novaEffect.radius = easeOutQuad(progress) * novaEffect.maxRadius;
+        }
+    }
+
+    if (gravityField && !gravityField.active && !novaEffect) {
+        gravityField = null;
+    }
+}
+
+function drawGravityField() {
+    if (gravityField && gravityField.active) {
+        push();
+        translate(gravityField.x, gravityField.y);
+        noStroke();
+        for (let i = 0; i < 5; i++) {
+            const alpha = map(i, 0, 4, 220, 80);
+            const radius = gravityField.radius * (0.6 + i * 0.12);
+            fill(20, 20, 40 + i * 10, alpha);
+            ellipse(0, 0, radius * 2);
+        }
+        rotate(gravityField.swirlAngle);
+        for (let arm = 0; arm < 3; arm++) {
+            push();
+            rotate((TWO_PI / 3) * arm);
+            for (let seg = 0; seg < 5; seg++) {
+                const segRadius = 12 + seg * 10;
+                const segAlpha = 120 - seg * 18;
+                fill(50, 50, 120, segAlpha);
+                ellipse(segRadius, 0, 18 - seg * 2, 18 - seg * 2);
+            }
+            pop();
+        }
+        fill(0, 0, 0, 220);
+        ellipse(0, 0, gravityField.radius * 0.9);
+        pop();
+    }
+
+    if (novaEffect && novaEffect.active) {
+        push();
+        translate(novaEffect.x, novaEffect.y);
+        noFill();
+        stroke(255, 230, 140, 180);
+        strokeWeight(6);
+        ellipse(0, 0, novaEffect.radius * 2);
+        stroke(255, 120, 80, 140);
+        strokeWeight(3);
+        ellipse(0, 0, novaEffect.radius * 1.4);
+        pop();
+    }
+}
+
+function applyGravityToBall(ball) {
+    if (!gravityField || !gravityField.active) {
+        return;
+    }
+
+    const dx = gravityField.x - ball.x;
+    const dy = gravityField.y - ball.y;
+    const distance = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+    const timeFactor = Math.min(deltaTime, 34);
+    const acceleration = GRAVITY_PULL_STRENGTH * timeFactor;
+    ball.xspeed += dx * acceleration;
+    ball.yspeed += dy * acceleration;
+
+    if (!gravityField.hasExploded && distance <= gravityField.radius) {
+        triggerGravityNova(ball);
+    }
+}
+
+function triggerGravityNova(ball) {
+    if (!gravityField) {
+        return;
+    }
+
+    gravityField.hasExploded = true;
+    gravityField.active = false;
+
+    ball.x = gravityField.x;
+    ball.y = gravityField.y;
+    const angle = radians(random(210, 330));
+    const speed = 16;
+    ball.xspeed = cos(angle) * speed;
+    ball.yspeed = sin(angle) * speed;
+
+    destroyNearestBricks(gravityField.x, gravityField.y, GRAVITY_MAX_BRICKS_DESTROYED);
+
+    novaEffect = {
+        active: true,
+        start: millis(),
+        duration: 700,
+        radius: 0,
+        maxRadius: 280,
+        x: gravityField.x,
+        y: gravityField.y
+    };
+}
+
+function destroyNearestBricks(cx, cy, maxCount) {
+    if (!bricks.length || maxCount <= 0) {
+        return;
+    }
+
+    const bricksWithDistance = bricks.map(brick => {
+        const bx = brick.x + brick.width / 2;
+        const by = brick.y + brick.height / 2;
+        return { brick, distance: dist(cx, cy, bx, by) };
+    });
+
+    bricksWithDistance.sort((a, b) => a.distance - b.distance);
+
+    bricksWithDistance.slice(0, maxCount).forEach(entry => {
+        destroyBrick(entry.brick);
+    });
+}
+
+function destroyBrick(brick) {
+    const index = bricks.indexOf(brick);
+    if (index === -1) {
+        return;
+    }
+
+    brick.health = 0;
+    if (brick.powerUp) {
+        const powerUpType = getRandomPowerUpType();
+        const newPowerUp = new PowerUp(brick.x + brick.width / 2, brick.y + brick.height / 2, powerUpType);
+        powerUps.push(newPowerUp);
+    }
+
+    bricks.splice(index, 1);
+}
+
+function easeOutQuad(t) {
+    return 1 - (1 - t) * (1 - t);
 }
 
 const debug = (shape) => {
