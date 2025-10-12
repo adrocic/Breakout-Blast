@@ -67,6 +67,10 @@ let smite;
 let menuMusic;
 let menuGif;
 
+let brickHitSoundPlayers = [];
+let brickSoundVolume = 1;
+let masterVolumeSlider;
+
 function preload() {
     // Ensure p5.sound APIs exist in environments where the sound
     // library might not be available. This prevents runtime errors
@@ -120,6 +124,136 @@ function preload() {
     menuMusic = loadSound('Assets/Sea_Shanty.mp3');
 }
 
+function ensureAudioContextRunning() {
+    if (typeof getAudioContext !== 'function') {
+        return;
+    }
+
+    const context = getAudioContext();
+    if (context && typeof context.resume === 'function' && context.state !== 'running') {
+        context.resume();
+    }
+}
+
+function initializeBrickHitSounds() {
+    if (typeof p5 === 'undefined' ||
+        typeof p5.Oscillator !== 'function' ||
+        typeof p5.Envelope !== 'function' ||
+        typeof p5.Noise !== 'function') {
+        brickHitSoundPlayers = [];
+        return;
+    }
+
+    const firstHit = createBrickTone({
+        wave: 'triangle',
+        startFreq: 720,
+        endFreq: 620,
+        baseAmp: 0.28,
+        attack: 0.002,
+        decay: 0.18,
+        sustain: 0.0,
+        release: 0.1
+    });
+
+    const secondHit = createBrickTone({
+        wave: 'sawtooth',
+        startFreq: 520,
+        endFreq: 410,
+        baseAmp: 0.26,
+        attack: 0.002,
+        decay: 0.22,
+        sustain: 0.0,
+        release: 0.12
+    });
+
+    const breakSound = createBrickBreakSound();
+
+    brickHitSoundPlayers = [firstHit, secondHit, breakSound];
+}
+
+function createBrickTone({ wave, startFreq, endFreq, baseAmp, attack, decay, sustain, release }) {
+    const oscillator = new p5.Oscillator(wave);
+    const envelope = new p5.Envelope();
+    envelope.setADSR(attack, decay, sustain, release);
+    envelope.setRange(baseAmp, 0);
+    oscillator.amp(envelope);
+    oscillator.start();
+
+    return () => {
+        ensureAudioContextRunning();
+        const detune = (Math.random() * 18) - 9;
+        oscillator.freq(startFreq + detune);
+        if (typeof endFreq === 'number') {
+            oscillator.freq(endFreq + detune * 0.5, decay + release);
+        }
+        envelope.setRange(baseAmp * brickSoundVolume, 0);
+        envelope.play(oscillator);
+    };
+}
+
+function createBrickBreakSound() {
+    const noise = new p5.Noise('white');
+    const filter = new p5.BandPass();
+    noise.disconnect();
+    noise.connect(filter);
+    filter.freq(480);
+    filter.res(8);
+
+    const noiseEnvelope = new p5.Envelope();
+    noiseEnvelope.setADSR(0.001, 0.18, 0, 0.24);
+    noiseEnvelope.setRange(0.6, 0);
+    noise.amp(noiseEnvelope);
+    noise.start();
+
+    const thumpOscillator = new p5.Oscillator('sine');
+    const thumpEnvelope = new p5.Envelope();
+    thumpEnvelope.setADSR(0.001, 0.15, 0, 0.32);
+    thumpEnvelope.setRange(0.7, 0);
+    thumpOscillator.amp(thumpEnvelope);
+    thumpOscillator.freq(140);
+    thumpOscillator.start();
+
+    return () => {
+        ensureAudioContextRunning();
+        const breakSweep = 420 + Math.random() * 60;
+        filter.freq(breakSweep);
+        thumpOscillator.freq(110 + Math.random() * 40);
+        noiseEnvelope.setRange(0.6 * brickSoundVolume, 0);
+        thumpEnvelope.setRange(0.7 * brickSoundVolume, 0);
+        noiseEnvelope.play(noise);
+        thumpEnvelope.play(thumpOscillator);
+    };
+}
+
+function triggerBrickHitSound(healthBeforeHit, destroyed) {
+    if (!brickHitSoundPlayers.length) {
+        return;
+    }
+
+    if (destroyed || healthBeforeHit <= 1) {
+        brickHitSoundPlayers[2]();
+        return;
+    }
+
+    if (healthBeforeHit >= 3) {
+        brickHitSoundPlayers[0]();
+    } else {
+        brickHitSoundPlayers[1]();
+    }
+}
+
+function updateMasterVolume(newVolume) {
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
+    brickSoundVolume = clampedVolume;
+
+    const sounds = [menuMusic, seaShanty, smite];
+    sounds.forEach(sound => {
+        if (sound && typeof sound.setVolume === 'function') {
+            sound.setVolume(clampedVolume);
+        }
+    });
+}
+
 // START BRICK CLASS
 
 class Brick {
@@ -142,6 +276,7 @@ class Brick {
     checkCollision(ball) {
         // Check if the ball is colliding with the brick
         if (collideCircleRect(ball, this)) {
+            const healthBeforeHit = this.health;
             let brickBottom = this.y + this.height
             let brickTop = this.y
             if (ball.y > brickTop && ball.y < brickBottom) {
@@ -155,6 +290,9 @@ class Brick {
             } else {
                 this.health -= 1;
             }
+
+            const destroyed = this.health <= 0;
+            triggerBrickHitSound(healthBeforeHit, destroyed);
 
             // If the brick has a power-up, create a new power-up object and add it to the game
             if (this.health === 0 && this.powerUp) {
@@ -694,13 +832,21 @@ function setup() {
     createCanvas(1920, 1080);
     background(backgroundImage, 1000)
 
+    initializeBrickHitSounds();
+
 
     // Create volume slider
-    let volumeSlider = createInput(1, 'range');
-    volumeSlider.input(function () {
-        menuMusic.setVolume(this.value);
-        seaShanty.setVolume(this.value);
+    masterVolumeSlider = createInput(brickSoundVolume, 'range');
+    masterVolumeSlider.attribute('min', 0);
+    masterVolumeSlider.attribute('max', 1);
+    masterVolumeSlider.attribute('step', 0.01);
+    masterVolumeSlider.input(() => {
+        const sliderValue = parseFloat(masterVolumeSlider.value());
+        if (!isNaN(sliderValue)) {
+            updateMasterVolume(sliderValue);
+        }
     });
+    updateMasterVolume(parseFloat(masterVolumeSlider.value()) || brickSoundVolume);
 
     // Start with the menu displayed
     menuMusic.setLoop(true);
