@@ -5,6 +5,7 @@ const BRICK_ROWS = 10;
 const PADDLE_WIDTH = 250;
 const PADDLE_HEIGHT = 50;
 const PADDLE_Y = 1000;
+const PADDLE_MOVE_SPEED = 22;
 
 const BALL_DIAMETER = 38;
 const LASER_BEAM_WIDTH = 120;
@@ -39,6 +40,10 @@ const GAME_STATES = Object.freeze({
 // Global variables
 let bricks = [];
 let paddle;
+const paddleInputState = {
+    left: false,
+    right: false
+};
 let allBalls = [];
 let powerUps = [];
 let gameOver = false;
@@ -73,6 +78,28 @@ function resetCaughtBallState() {
     }
     caughtBall = null;
     caughtBallSide = null;
+}
+
+function resetPaddleInputState() {
+    paddleInputState.left = false;
+    paddleInputState.right = false;
+}
+
+function updatePaddleMovementFromKey(keyCode, key, isPressed) {
+    const normalizedKey = typeof key === 'string' ? key.toLowerCase() : '';
+    let handled = false;
+
+    if (keyCode === LEFT_ARROW || normalizedKey === 'a') {
+        paddleInputState.left = isPressed;
+        handled = true;
+    }
+
+    if (keyCode === RIGHT_ARROW || normalizedKey === 'd') {
+        paddleInputState.right = isPressed;
+        handled = true;
+    }
+
+    return handled;
 }
 
 // Tracks the current screen/scene
@@ -913,10 +940,22 @@ class Paddle {
         this.bounceMagnitude = 12;
         this.scaleMagnitudeX = 0.06;
         this.scaleMagnitudeY = 0.09;
+        this.speed = PADDLE_MOVE_SPEED;
     }
 
     update() {
-        this.x = constrain(mouseX - this.width / 2, 0, width - this.width);
+        let frameTime = typeof deltaTime === 'number' ? deltaTime : 16.67;
+        if (!Number.isFinite(frameTime) || frameTime <= 0) {
+            frameTime = 16.67;
+        }
+
+        const direction = (paddleInputState.right ? 1 : 0) - (paddleInputState.left ? 1 : 0);
+        const frameMultiplier = frameTime / (1000 / 60);
+        if (direction !== 0) {
+            this.x += direction * this.speed * frameMultiplier;
+        }
+
+        this.x = clamp(this.x, 0, width - this.width);
     }
 
     startBounce() {
@@ -1123,9 +1162,20 @@ class Ball {
         if (!caughtBall && withinVertical) {
             const cameFromLeft = this.prevX + this.diameter / 2 <= paddle.x;
             const cameFromRight = this.prevX - this.diameter / 2 >= paddle.x + paddle.width;
+            const prevTop = this.prevY - this.diameter / 2;
+            const cameFromBelow = prevTop >= paddle.y + paddle.height;
 
-            if (cameFromLeft || cameFromRight) {
-                catchBallOnPaddle(this, paddle, cameFromLeft ? 'left' : 'right');
+            if (cameFromLeft || cameFromRight || cameFromBelow) {
+                let side;
+                if (cameFromBelow && !cameFromLeft && !cameFromRight) {
+                    const distanceToLeft = Math.abs(this.x - paddle.x);
+                    const distanceToRight = Math.abs((paddle.x + paddle.width) - this.x);
+                    side = distanceToLeft <= distanceToRight ? 'left' : 'right';
+                } else {
+                    side = cameFromLeft ? 'left' : 'right';
+                }
+
+                catchBallOnPaddle(this, paddle, side);
                 return 'catch';
             }
         }
@@ -1542,6 +1592,7 @@ function setup() {
     menuMusic.setLoop(true);
     menuMusic.play();
     initializeMenuParticles();
+    resetPaddleInputState();
 }
 
 // Initializes or resets game entities and enters the playing state
@@ -1551,6 +1602,7 @@ function startGame() {
     powerUps = [];
     powerUpCatchEffects = [];
     resetCaughtBallState();
+    resetPaddleInputState();
     laser.charges = 0;
     laser.isFiring = false;
     laser.height = 0;
@@ -1583,6 +1635,8 @@ function startGame() {
 }
 
 function keyPressed() {
+    updatePaddleMovementFromKey(keyCode, key, true);
+
     if (gameState === GAME_STATES.TITLE && keyCode === ENTER) {
         smite.play();
         startGame();
@@ -1612,6 +1666,10 @@ function keyPressed() {
             goToTitleScreen();
         }
     }
+}
+
+function keyReleased() {
+    updatePaddleMovementFromKey(keyCode, key, false);
 }
 
 function mousePressed() {
@@ -1841,9 +1899,6 @@ function draw() {
             ball.yspeed *= -1;
         }
     })
-
-    // Move paddle with mouse
-    paddle.x = mouseX - PADDLE_WIDTH / 2;
 
     // Game over
     if (!allBalls.length) {
@@ -2146,7 +2201,7 @@ function drawTitleScreen() {
     textSize(18);
     fill(225);
     const briefingLines = [
-        '• Glide the paddle with your mouse to redirect the energy core.',
+        '• Steer the paddle with A/D or the ←/→ arrows to redirect the energy core.',
         '• Snatch power-ups to duplicate balls, ignite lasers, or bend gravity.',
         '• Click to unleash stored laser charges with pinpoint precision.'
     ];
@@ -2183,7 +2238,7 @@ function drawTitleScreen() {
     text('Press ENTER to Launch', width / 2, calloutY);
     textSize(20);
     fill(235);
-    text('Space: Pause · Click: Fire Lasers · Adjust volume via the slider above', width / 2, calloutY + 40);
+    text('A/D or ←/→: Move · Space: Pause · Click: Fire Lasers · Adjust volume via the slider above', width / 2, calloutY + 40);
     pop();
 }
 
@@ -2375,6 +2430,7 @@ function goToTitleScreen() {
     powerUps = [];
     powerUpCatchEffects = [];
     resetCaughtBallState();
+    resetPaddleInputState();
     gravityWell = null;
     if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
         gravityWellSound.stop();
