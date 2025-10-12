@@ -43,6 +43,14 @@ let isDebugging = false;
 let gravityWell;
 let gravityWellSound;
 
+function removeTemporaryBalls() {
+    if (!allBalls.length) {
+        return;
+    }
+
+    allBalls = allBalls.filter(ball => !ball.isTemporary);
+}
+
 // Tracks the current screen/scene
 let gameState = GAME_STATES.TITLE;
 
@@ -575,6 +583,14 @@ class Brick {
         // Check if the ball is colliding with the brick
         if (collideCircleRect(ball, this)) {
             const gravityActive = isGravityWellActive();
+            let brickBottom = this.y + this.height;
+            let brickTop = this.y;
+
+            if (ball.y > brickTop && ball.y < brickBottom) {
+                ball.xspeed *= -1;
+            } else {
+                ball.yspeed *= -1;
+            }
 
             if (gravityActive) {
                 if (ball.gravityDamageCooldown > 0) {
@@ -590,15 +606,6 @@ class Brick {
                 }
 
                 return true;
-            }
-
-            let brickBottom = this.y + this.height;
-            let brickTop = this.y;
-
-            if (ball.y > brickTop && ball.y < brickBottom) {
-                ball.xspeed *= -1;
-            } else {
-                ball.yspeed *= -1;
             }
 
             const highSpeedImpact = Math.abs(ball.xspeed) > 15;
@@ -742,9 +749,17 @@ class Paddle {
 // START BALL CLASS
 
 class Ball {
-    constructor(x, y) {
-        this.x = x || width / 2;
-        this.y = y || PADDLE_Y - BALL_DIAMETER;
+    constructor(x, y, options) {
+        if (typeof x === 'object' && x !== null) {
+            options = x;
+            x = options.x;
+            y = options.y;
+        }
+
+        options = options || {};
+
+        this.x = typeof x === 'number' ? x : width / 2;
+        this.y = typeof y === 'number' ? y : PADDLE_Y - BALL_DIAMETER;
         this.diameter = BALL_DIAMETER;
         this.xspeed = 5;
         this.yspeed = -5;
@@ -754,6 +769,7 @@ class Ball {
         this.bounceDuration = 130; // milliseconds
         this.bounceMagnitude = 7;
         this.gravityDamageCooldown = 0;
+        this.isTemporary = !!options.isTemporary;
     }
 
     update(dt) {
@@ -919,6 +935,8 @@ function activateGravityWell() {
         initializeGravityWell();
     }
 
+    removeTemporaryBalls();
+
     gravityWell.active = true;
     gravityWell.remainingTime = GRAVITY_WELL_DURATION_MS;
     gravityWell.x = width / 2;
@@ -928,8 +946,31 @@ function activateGravityWell() {
     gravityWell.particles = createGravityParticles();
     gravityWell.nova = null;
 
+    spawnTemporaryGravityBalls();
+
     if (gravityWellSound && typeof gravityWellSound.start === 'function') {
         gravityWellSound.start();
+    }
+}
+
+function spawnTemporaryGravityBalls() {
+    if (!paddle || !allBalls) {
+        return;
+    }
+
+    const spawnCount = 4;
+    const originX = paddle.x + paddle.width / 2;
+    const originY = paddle.y - BALL_DIAMETER * 0.75;
+    const baseAngle = -Math.PI / 2;
+    const spread = Math.PI / 2;
+    const speed = 8;
+
+    for (let i = 0; i < spawnCount; i++) {
+        const angle = spread === 0 ? baseAngle : (baseAngle - spread / 2) + (spread / (spawnCount - 1)) * i;
+        const tempBall = new Ball(originX, originY, { isTemporary: true });
+        tempBall.xspeed = Math.cos(angle) * speed;
+        tempBall.yspeed = Math.sin(angle) * speed;
+        allBalls.push(tempBall);
     }
 }
 
@@ -974,6 +1015,7 @@ function updateGravityWell() {
             if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
                 gravityWellSound.stop();
             }
+            removeTemporaryBalls();
         } else {
             gravityWell.pulse = (gravityWell.pulse + dtSeconds * 3.2) % (Math.PI * 2);
             gravityWell.particles.forEach(particle => {
@@ -1064,6 +1106,9 @@ function triggerGravityNova(ball) {
     ball.xspeed = Math.sin(burstAngle) * burstSpeed;
     ball.yspeed = Math.abs(Math.cos(burstAngle) * burstSpeed) + 8;
     ball.currentBallImage = ballFullPowerImage;
+    ball.isTemporary = false;
+
+    removeTemporaryBalls();
 }
 
 function destroyNearestBricks(center, maxCount) {
