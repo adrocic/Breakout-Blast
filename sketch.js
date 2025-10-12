@@ -11,11 +11,13 @@ const LASER_BEAM_WIDTH = 120;
 const LASER_GROWTH_RATE = 4200;
 const LASER_FRAME_DURATION_MS = 70;
 const LASER_PERSISTENCE_MS = 150;
+const LASER_DAMAGE_INTERVAL_MS = 100;
 const LASER_SHOTS_PER_PICKUP = 3;
 
-const GRAVITY_WELL_DURATION_MS = 10000;
-const GRAVITY_WELL_PULL_FORCE = 3600;
-const GRAVITY_WELL_CAPTURE_RADIUS = 280;
+const GRAVITY_WELL_DURATION_MS = 20000;
+const GRAVITY_WELL_PULL_FORCE = 14400;
+const GRAVITY_WELL_CAPTURE_RADIUS = 140;
+const GRAVITY_DAMAGE_INTERVAL_MS = 1000;
 const GRAVITY_NOVA_MAX_BRICKS = 4;
 
 // Declare variables for the start and end points of the laser
@@ -39,6 +41,15 @@ let gameOver = false;
 let paused = false;
 let isDebugging = false;
 let gravityWell;
+let gravityWellSound;
+
+function removeTemporaryBalls() {
+    if (!allBalls.length) {
+        return;
+    }
+
+    allBalls = allBalls.filter(ball => !ball.isTemporary);
+}
 
 // Tracks the current screen/scene
 let gameState = GAME_STATES.TITLE;
@@ -230,6 +241,59 @@ function initializePowerUpCatchSound() {
     };
 }
 
+function initializeGravityWellSound() {
+    if (typeof p5 === 'undefined' ||
+        typeof p5.Oscillator !== 'function') {
+        gravityWellSound = null;
+        return;
+    }
+
+    const lowOscillator = new p5.Oscillator('sine');
+    const shimmerOscillator = new p5.Oscillator('triangle');
+
+    lowOscillator.amp(0);
+    shimmerOscillator.amp(0);
+    lowOscillator.start();
+    shimmerOscillator.start();
+
+    gravityWellSound = {
+        playing: false,
+        start() {
+            ensureAudioContextRunning();
+            lowOscillator.freq(68);
+            shimmerOscillator.freq(240);
+            this.playing = true;
+            this.setVolume();
+        },
+        stop() {
+            if (!this.playing) {
+                return;
+            }
+
+            lowOscillator.amp(0, 0.5);
+            shimmerOscillator.amp(0, 0.5);
+            this.playing = false;
+        },
+        update() {
+            if (!this.playing) {
+                return;
+            }
+
+            const timeSeconds = getCurrentTimeMs() / 1000;
+            lowOscillator.freq(68 + Math.sin(timeSeconds * 0.9) * 18);
+            shimmerOscillator.freq(240 + Math.sin(timeSeconds * 1.7) * 55);
+        },
+        setVolume() {
+            if (!this.playing) {
+                return;
+            }
+
+            lowOscillator.amp(0.26 * brickSoundVolume, 0.24);
+            shimmerOscillator.amp(0.14 * brickSoundVolume, 0.24);
+        }
+    };
+}
+
 function playPowerUpCatchSound(type) {
     if (typeof powerUpCatchSoundPlayer === 'function') {
         powerUpCatchSoundPlayer(type);
@@ -411,6 +475,75 @@ function triggerBrickHitSound(healthBeforeHit, destroyed) {
     }
 }
 
+function getCurrentTimeMs() {
+    if (typeof millis === 'function') {
+        return millis();
+    }
+
+    return Date.now();
+}
+
+function isGravityWellActive() {
+    return !!(gravityWell && gravityWell.active);
+}
+
+function updateBrickAppearance(brick) {
+    if (!brick) {
+        return;
+    }
+
+    if (brick.health >= 3) {
+        brick.currentBrickImage = brick3Image;
+        return;
+    }
+
+    if (brick.health === 2) {
+        brick.currentBrickImage = brick2Image;
+        return;
+    }
+
+    if (brick.health === 1) {
+        brick.currentBrickImage = brick1Image;
+        return;
+    }
+}
+
+function damageBrick(brick, amount) {
+    if (!brick || typeof amount !== 'number') {
+        return false;
+    }
+
+    const healthBeforeHit = brick.health;
+    brick.health = Math.max(0, brick.health - Math.max(0, amount));
+    updateBrickAppearance(brick);
+
+    const destroyed = brick.health <= 0;
+    triggerBrickHitSound(healthBeforeHit, destroyed);
+    return destroyed;
+}
+
+function applyLaserDamageToBrick(brick) {
+    if (!laser || !laser.hitTimestamps || !brick) {
+        return false;
+    }
+
+    const now = getCurrentTimeMs();
+    const lastHit = laser.hitTimestamps.get(brick.id) || 0;
+
+    if (now - lastHit < LASER_DAMAGE_INTERVAL_MS) {
+        return false;
+    }
+
+    laser.hitTimestamps.set(brick.id, now);
+    const destroyed = damageBrick(brick, 1);
+
+    if (destroyed) {
+        laser.hitTimestamps.delete(brick.id);
+    }
+
+    return destroyed;
+}
+
 function updateMasterVolume(newVolume) {
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     brickSoundVolume = clampedVolume;
@@ -421,6 +554,10 @@ function updateMasterVolume(newVolume) {
             sound.setVolume(clampedVolume);
         }
     });
+
+    if (gravityWellSound && typeof gravityWellSound.setVolume === 'function') {
+        gravityWellSound.setVolume();
+    }
 }
 
 // START BRICK CLASS
@@ -445,29 +582,44 @@ class Brick {
     checkCollision(ball) {
         // Check if the ball is colliding with the brick
         if (collideCircleRect(ball, this)) {
-            const healthBeforeHit = this.health;
-            let brickBottom = this.y + this.height
-            let brickTop = this.y
+            const gravityActive = isGravityWellActive();
+            let brickBottom = this.y + this.height;
+            let brickTop = this.y;
+
             if (ball.y > brickTop && ball.y < brickBottom) {
                 ball.xspeed *= -1;
             } else {
                 ball.yspeed *= -1;
             }
-            if (Math.abs(ball.xspeed) > 15) {
-                this.health = 0;
-                ball.xspeed += 1;
-            } else {
-                this.health -= 1;
+
+            if (gravityActive) {
+                if (ball.gravityDamageCooldown > 0) {
+                    return true;
+                }
+
+                const destroyedByGravity = damageBrick(this, 1);
+                ball.gravityDamageCooldown = GRAVITY_DAMAGE_INTERVAL_MS;
+
+                if (destroyedByGravity && this.powerUp) {
+                    spawnPowerUpFromBrick(this);
+                    this.powerUp = false;
+                }
+
+                return true;
             }
 
-            const destroyed = this.health <= 0;
-            triggerBrickHitSound(healthBeforeHit, destroyed);
+            const highSpeedImpact = Math.abs(ball.xspeed) > 15;
+            const destroyed = damageBrick(this, highSpeedImpact ? this.health : 1);
 
-            // If the brick has a power-up, create a new power-up object and add it to the game
-            if (this.health === 0 && this.powerUp) {
+            if (highSpeedImpact) {
+                ball.xspeed += 1;
+            }
+
+            if (destroyed && this.powerUp) {
                 spawnPowerUpFromBrick(this);
                 this.powerUp = false;
             }
+
             return true;  // Return true to indicate that the brick was hit
         }
 
@@ -597,9 +749,17 @@ class Paddle {
 // START BALL CLASS
 
 class Ball {
-    constructor(x, y) {
-        this.x = x || width / 2;
-        this.y = y || PADDLE_Y - BALL_DIAMETER;
+    constructor(x, y, options) {
+        if (typeof x === 'object' && x !== null) {
+            options = x;
+            x = options.x;
+            y = options.y;
+        }
+
+        options = options || {};
+
+        this.x = typeof x === 'number' ? x : width / 2;
+        this.y = typeof y === 'number' ? y : PADDLE_Y - BALL_DIAMETER;
         this.diameter = BALL_DIAMETER;
         this.xspeed = 5;
         this.yspeed = -5;
@@ -608,6 +768,14 @@ class Ball {
         this.bounceStartTime = null;
         this.bounceDuration = 130; // milliseconds
         this.bounceMagnitude = 7;
+        this.gravityDamageCooldown = 0;
+        this.isTemporary = !!options.isTemporary;
+    }
+
+    update(dt) {
+        if (this.gravityDamageCooldown > 0) {
+            this.gravityDamageCooldown = Math.max(0, this.gravityDamageCooldown - dt);
+        }
     }
 
     move() {
@@ -645,7 +813,11 @@ class Ball {
         let offsetY = 0;
         let scaleAmount = 1;
 
-        if (this.bounceStartTime !== null) {
+        const gravityActive = isGravityWellActive();
+
+        if (gravityActive) {
+            this.bounceStartTime = null;
+        } else if (this.bounceStartTime !== null) {
             const elapsed = millis() - this.bounceStartTime;
             if (elapsed < this.bounceDuration) {
                 const progress = elapsed / this.bounceDuration;
@@ -661,11 +833,25 @@ class Ball {
         translate(this.x, this.y + offsetY);
         const renderDiameter = this.diameter * scaleAmount;
         const halfRender = renderDiameter / 2;
-        image(this.currentBallImage, -halfRender, -halfRender, renderDiameter, renderDiameter);
+
+        if (gravityActive) {
+            push();
+            tint(180, 70, 255, 255);
+            image(this.currentBallImage, -halfRender, -halfRender, renderDiameter, renderDiameter);
+            pop();
+        } else {
+            image(this.currentBallImage, -halfRender, -halfRender, renderDiameter, renderDiameter);
+        }
+
         pop();
     }
 
     startBounce() {
+        if (isGravityWellActive()) {
+            this.bounceStartTime = null;
+            return;
+        }
+
         this.bounceStartTime = millis();
     }
 
@@ -728,6 +914,10 @@ function spawnPowerUpFromBrick(brick) {
 }
 
 function initializeGravityWell() {
+    if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
+        gravityWellSound.stop();
+    }
+
     gravityWell = {
         active: false,
         x: width / 2,
@@ -745,6 +935,8 @@ function activateGravityWell() {
         initializeGravityWell();
     }
 
+    removeTemporaryBalls();
+
     gravityWell.active = true;
     gravityWell.remainingTime = GRAVITY_WELL_DURATION_MS;
     gravityWell.x = width / 2;
@@ -753,6 +945,33 @@ function activateGravityWell() {
     gravityWell.pulse = 0;
     gravityWell.particles = createGravityParticles();
     gravityWell.nova = null;
+
+    spawnTemporaryGravityBalls();
+
+    if (gravityWellSound && typeof gravityWellSound.start === 'function') {
+        gravityWellSound.start();
+    }
+}
+
+function spawnTemporaryGravityBalls() {
+    if (!paddle || !allBalls) {
+        return;
+    }
+
+    const spawnCount = 4;
+    const originX = paddle.x + paddle.width / 2;
+    const originY = paddle.y - BALL_DIAMETER * 0.75;
+    const baseAngle = -Math.PI / 2;
+    const spread = Math.PI / 2;
+    const speed = 8;
+
+    for (let i = 0; i < spawnCount; i++) {
+        const angle = spread === 0 ? baseAngle : (baseAngle - spread / 2) + (spread / (spawnCount - 1)) * i;
+        const tempBall = new Ball(originX, originY, { isTemporary: true });
+        tempBall.xspeed = Math.cos(angle) * speed;
+        tempBall.yspeed = Math.sin(angle) * speed;
+        allBalls.push(tempBall);
+    }
 }
 
 function createGravityParticles() {
@@ -786,9 +1005,17 @@ function updateGravityWell() {
     if (gravityWell.active) {
         gravityWell.remainingTime -= dt;
 
+        if (gravityWellSound && typeof gravityWellSound.update === 'function') {
+            gravityWellSound.update();
+        }
+
         if (gravityWell.remainingTime <= 0) {
             gravityWell.active = false;
             gravityWell.particles = [];
+            if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
+                gravityWellSound.stop();
+            }
+            removeTemporaryBalls();
         } else {
             gravityWell.pulse = (gravityWell.pulse + dtSeconds * 3.2) % (Math.PI * 2);
             gravityWell.particles.forEach(particle => {
@@ -858,6 +1085,10 @@ function triggerGravityNova(ball) {
     gravityWell.remainingTime = 0;
     gravityWell.particles = [];
 
+    if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
+        gravityWellSound.stop();
+    }
+
     const novaDuration = 600;
     gravityWell.nova = {
         radius: gravityWell.radius,
@@ -875,6 +1106,9 @@ function triggerGravityNova(ball) {
     ball.xspeed = Math.sin(burstAngle) * burstSpeed;
     ball.yspeed = Math.abs(Math.cos(burstAngle) * burstSpeed) + 8;
     ball.currentBallImage = ballFullPowerImage;
+    ball.isTemporary = false;
+
+    removeTemporaryBalls();
 }
 
 function destroyNearestBricks(center, maxCount) {
@@ -996,7 +1230,8 @@ function setup() {
         y: 0,
         frameIndex: 0,
         frameTimer: 0,
-        holdTimer: 0
+        holdTimer: 0,
+        hitTimestamps: new Map()
     }
     noStroke();
     createCanvas(1920, 1080);
@@ -1004,6 +1239,7 @@ function setup() {
 
     initializeBrickHitSounds();
     initializePowerUpCatchSound();
+    initializeGravityWellSound();
 
 
     // Create volume slider
@@ -1037,6 +1273,9 @@ function startGame() {
     laser.frameIndex = 0;
     laser.frameTimer = 0;
     laser.holdTimer = 0;
+    if (laser.hitTimestamps) {
+        laser.hitTimestamps.clear();
+    }
     initializeGravityWell();
 
     for (let i = 0; i < BRICK_COLS; i++) {
@@ -1139,20 +1378,16 @@ function draw() {
         let shouldRemove = false;
 
         if (laser.isFiring && collideRectRect(laser, brick)) {
-            brick.health = 0;
-            shouldRemove = true;
+            const destroyedByLaser = applyLaserDamageToBrick(brick);
+            if (destroyedByLaser) {
+                shouldRemove = true;
+            }
         }
 
         if (!shouldRemove) {
             for (const ball of allBalls) {
                 if (!brick.checkCollision(ball)) {
                     continue;
-                }
-
-                if (brick.health === 1) {
-                    brick.currentBrickImage = brick1Image;
-                } else if (brick.health === 2) {
-                    brick.currentBrickImage = brick2Image;
                 }
 
                 if (brick.health <= 0) {
@@ -1166,6 +1401,9 @@ function draw() {
             if (brick.powerUp) {
                 spawnPowerUpFromBrick(brick);
                 brick.powerUp = false;
+            }
+            if (laser.hitTimestamps) {
+                laser.hitTimestamps.delete(brick.id);
             }
             bricks.splice(i, 1);
             recordBrickDestroyed();
@@ -1272,6 +1510,13 @@ function draw() {
 
     drawPowerUpCatchEffects();
 
+    const dtForBalls = typeof deltaTime === 'number' ? deltaTime : 16.67;
+    allBalls.forEach(ball => {
+        if (typeof ball.update === 'function') {
+            ball.update(dtForBalls);
+        }
+    });
+
     // Move balls
     allBalls.forEach(ball => {
         ball.move();
@@ -1340,6 +1585,9 @@ function attemptLaserFire() {
 function updateLaserState() {
     if (!laser.isFiring) {
         laser.height = 0;
+        if (laser.hitTimestamps && typeof laser.hitTimestamps.clear === 'function') {
+            laser.hitTimestamps.clear();
+        }
         return;
     }
 
@@ -1807,6 +2055,10 @@ function endCurrentSession(nextState, resultLabel) {
         seaShanty.stop();
     }
 
+    if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
+        gravityWellSound.stop();
+    }
+
     ensureMenuMusicPlaying();
     finalizeSession(resultLabel);
     gameState = nextState;
@@ -1825,6 +2077,9 @@ function goToTitleScreen() {
     powerUps = [];
     powerUpCatchEffects = [];
     gravityWell = null;
+    if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
+        gravityWellSound.stop();
+    }
     if (laser) {
         laser.isFiring = false;
         laser.height = 0;
