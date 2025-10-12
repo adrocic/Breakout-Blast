@@ -22,6 +22,14 @@ const GRAVITY_NOVA_MAX_BRICKS = 4;
 let laser;
 let laserFrames = [];
 
+// Game state identifiers used for the various UI scenes
+const GAME_STATES = Object.freeze({
+    TITLE: 'title',
+    PLAYING: 'game',
+    GAME_OVER: 'gameover',
+    VICTORY: 'win'
+});
+
 // Global variables
 let bricks = [];
 let paddle;
@@ -32,8 +40,16 @@ let paused = false;
 let isDebugging = false;
 let gravityWell;
 
-// Tracks the current screen: 'menu', 'game', 'gameover', or 'win'
-let gameState = 'menu';
+// Tracks the current screen/scene
+let gameState = GAME_STATES.TITLE;
+
+// Session level tracking for the end screen summary
+let sessionStats = null;
+let lastSessionSummary = null;
+
+// Decorative particles used on the title and end screens
+const MENU_PARTICLE_COUNT = 70;
+let menuParticles = [];
 
 let backgroundImage;
 
@@ -895,6 +911,7 @@ function destroyBrick(brick) {
     }
 
     bricks.splice(index, 1);
+    recordBrickDestroyed();
 }
 
 function drawGravityWell() {
@@ -1005,7 +1022,7 @@ function setup() {
     // Start with the menu displayed
     menuMusic.setLoop(true);
     menuMusic.play();
-    noLoop();
+    initializeMenuParticles();
 }
 
 // Initializes or resets game entities and enters the playing state
@@ -1036,19 +1053,20 @@ function startGame() {
     menuMusic.stop();
     seaShanty.setLoop(true);
     seaShanty.play();
-    gameState = 'game';
+    gameState = GAME_STATES.PLAYING;
+    sessionStats = createSessionStats();
     paused = false;
     loop();
 }
 
 function keyPressed() {
-    if (gameState === 'menu' && keyCode === ENTER) {
+    if (gameState === GAME_STATES.TITLE && keyCode === ENTER) {
         smite.play();
         startGame();
         return;
     }
 
-    if (gameState === 'game' && key === ' ') {  // Toggle pause with spacebar
+    if (gameState === GAME_STATES.PLAYING && key === ' ') {  // Toggle pause with spacebar
         paused = !paused;
         if (paused) {
             seaShanty.stop();
@@ -1059,9 +1077,17 @@ function keyPressed() {
         }
     }
 
-    if ((gameState === 'gameover' || gameState === 'win') && (key === 'r' || key === 'R')) {
-        smite.play();
-        startGame();
+    if (gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY) {
+        if (keyCode === ENTER) {
+            smite.play();
+            startGame();
+            return;
+        }
+
+        if (key === 'm' || key === 'M') {
+            smite.play();
+            goToTitleScreen();
+        }
     }
 }
 
@@ -1072,25 +1098,23 @@ function mousePressed() {
 }
 
 function draw() {
+    if (gameState === GAME_STATES.TITLE) {
+        ensureMenuMusicPlaying();
+        drawTitleScreen();
+        return;
+    }
+
+    if (gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY) {
+        ensureMenuMusicPlaying();
+        drawEndScreen(gameState);
+        return;
+    }
+
+    if (gameState !== GAME_STATES.PLAYING) {
+        return;
+    }
+
     background(backgroundImage);
-
-    if (gameState === 'menu') {
-        if (!menuMusic.isPlaying()) menuMusic.play();
-        showMenu();
-        return;
-    }
-
-    if (gameState === 'gameover') {
-        if (!menuMusic.isPlaying()) menuMusic.play();
-        showGameOver();
-        return;
-    }
-
-    if (gameState === 'win') {
-        if (!menuMusic.isPlaying()) menuMusic.play();
-        showWin();
-        return;
-    }
 
     if (paddle && typeof paddle.update === 'function') {
         paddle.update();
@@ -1144,6 +1168,7 @@ function draw() {
                 brick.powerUp = false;
             }
             bricks.splice(i, 1);
+            recordBrickDestroyed();
             continue;
         }
 
@@ -1201,6 +1226,7 @@ function draw() {
 
         if (pu.checkCollision(paddle)) {
             triggerPowerUpCatchFeedback(pu);
+            recordPowerUpCollected();
             if (pu.type === 'extra ball') {
                 const extraBall = new Ball(pu.x, pu.y - 10);
                 //random speed and direction for extra ball
@@ -1279,22 +1305,18 @@ function draw() {
 
     // Game over
     if (!allBalls.length) {
-        seaShanty.stop();
-        menuMusic.play();
-        gameState = 'gameover';
-        noLoop();
+        endCurrentSession(GAME_STATES.GAME_OVER, 'defeat');
+        return;
     }
 
     if (!bricks.length) {
-        seaShanty.stop();
-        menuMusic.play();
-        gameState = 'win';
-        noLoop();
+        endCurrentSession(GAME_STATES.VICTORY, 'victory');
+        return;
     }
 }
 
 function attemptLaserFire() {
-    if (gameState !== 'game' || paused || !paddle) {
+    if (gameState !== GAME_STATES.PLAYING || paused || !paddle) {
         return;
     }
 
@@ -1379,7 +1401,7 @@ function drawLaser() {
 }
 
 function drawLaserHUD() {
-    if (gameState !== 'game') {
+    if (gameState !== GAME_STATES.PLAYING) {
         return;
     }
 
@@ -1433,46 +1455,397 @@ const debug = (shape) => {
     pop();
 }
 
-function showMenu() {
-    background(backgroundImage);
-    fill(0, 0, 0, 150);
-    rect(0, 0, width, height);
-    textAlign(CENTER, CENTER);
-    if (menuGif) {
-        image(menuGif, width / 2 - menuGif.width / 2, height / 2 - menuGif.height / 2 - 100);
+function ensureMenuMusicPlaying() {
+    if (!menuMusic || typeof menuMusic.isPlaying !== 'function') {
+        return;
     }
-    textSize(64);
+
+    if (!menuMusic.isPlaying()) {
+        if (typeof menuMusic.setLoop === 'function') {
+            menuMusic.setLoop(true);
+        }
+        menuMusic.play();
+    }
+}
+
+function initializeMenuParticles() {
+    if (typeof width === 'undefined' || typeof height === 'undefined') {
+        return;
+    }
+
+    menuParticles = [];
+    for (let i = 0; i < MENU_PARTICLE_COUNT; i++) {
+        menuParticles.push(createMenuParticle());
+    }
+}
+
+function createMenuParticle() {
+    return {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        radius: Math.random() * 14 + 10,
+        speed: Math.random() * 40 + 35,
+        drift: Math.random() * 30 + 18,
+        offset: Math.random() * Math.PI * 2,
+        colorShift: Math.random() * 120 - 40
+    };
+}
+
+function updateMenuParticles(accentColor) {
+    if (!menuParticles.length) {
+        initializeMenuParticles();
+    }
+
+    const dt = Math.min(deltaTime, 1000) / 1000;
+    const baseR = red(accentColor);
+    const baseG = green(accentColor);
+    const baseB = blue(accentColor);
+
+    menuParticles.forEach(particle => {
+        particle.y += particle.speed * dt;
+        particle.x += Math.sin(frameCount * 0.02 + particle.offset) * particle.drift * dt;
+
+        if (particle.y - particle.radius > height + 80) {
+            particle.y = -particle.radius - Math.random() * 120;
+            particle.x = Math.random() * width;
+        }
+
+        const shimmer = Math.sin(frameCount * 0.05 + particle.offset);
+        const alpha = 120 + shimmer * 80;
+        const tintShift = particle.colorShift;
+        const r = constrain(baseR + tintShift * 0.4, 0, 255);
+        const g = constrain(baseG + tintShift * 0.2, 0, 255);
+        const b = constrain(baseB + 40 + tintShift * 0.5, 0, 255);
+
+        noStroke();
+        fill(r, g, b, alpha);
+        ellipse(particle.x, particle.y, particle.radius * 1.4, particle.radius);
+        fill(r, g, b, alpha * 0.4);
+        ellipse(particle.x, particle.y, particle.radius * 0.6, particle.radius * 0.6);
+    });
+}
+
+function drawMenuBackdrop(accentColor) {
+    background(12, 10, 32);
+
+    if (backgroundImage) {
+        push();
+        tint(255, 35);
+        image(backgroundImage, 0, 0, width, height);
+        pop();
+    }
+
+    push();
+    noStroke();
+    const layers = 8;
+    for (let i = 0; i < layers; i++) {
+        const progress = i / layers;
+        const bandHeight = height / layers + 32;
+        const wave = Math.sin(frameCount * 0.01 + progress * Math.PI * 2);
+        const baseColor = color(32, 24, 70, 110);
+        const highlight = color(red(accentColor), green(accentColor), blue(accentColor), 70);
+        const blended = lerpColor(baseColor, highlight, (wave + 1) / 2);
+        fill(blended);
+        rect(0, i * (height / layers) + wave * 16 - 16, width, bandHeight);
+    }
+    pop();
+
+    updateMenuParticles(accentColor);
+
+    push();
+    stroke(red(accentColor), green(accentColor), blue(accentColor), 90);
+    strokeWeight(3);
+    noFill();
+    const margin = 50 + Math.sin(frameCount * 0.01) * 8;
+    rect(margin, margin, width - margin * 2, height - margin * 2, 26);
+    pop();
+}
+
+function drawTitleScreen() {
+    const accent = color(110, 180, 255);
+    drawMenuBackdrop(accent);
+
+    const panelWidth = width * 0.55;
+    const panelHeight = height * 0.52;
+    const panelX = width / 2 - panelWidth / 2;
+    const panelY = height / 2 - panelHeight / 2 + 60;
+
+    push();
+    noStroke();
+    fill(10, 12, 30, 220);
+    rect(panelX, panelY, panelWidth, panelHeight, 32);
+    const glowAlpha = 90 + 40 * Math.sin(frameCount * 0.05);
+    stroke(red(accent), green(accent), blue(accent), glowAlpha);
+    strokeWeight(4);
+    noFill();
+    rect(panelX - 8, panelY - 8, panelWidth + 16, panelHeight + 16, 36);
+    pop();
+
+    push();
+    textAlign(CENTER, CENTER);
+    textSize(96);
     fill(255);
-    text('Breakout Blast', width / 2, height / 2 - 250);
-    let alpha = 200 + 55 * sin(frameCount * 0.1);
-    fill(255, alpha);
-    textSize(36);
-    text('Press ENTER to Start', width / 2, height - 200);
+    text('Breakout Blast', width / 2, panelY - 140);
+    textSize(28);
+    fill(215);
+    text('An interstellar gauntlet of ricochets and power-ups', width / 2, panelY - 80);
+    pop();
+
+    const infoX = panelX + 60;
+    const infoY = panelY + 70;
+    push();
+    textAlign(LEFT, TOP);
+    textSize(26);
+    fill(255);
+    text('Mission Briefing', infoX, infoY);
+    textSize(18);
+    fill(225);
+    const briefingLines = [
+        '• Glide the paddle with your mouse to redirect the energy core.',
+        '• Snatch power-ups to duplicate balls, ignite lasers, or bend gravity.',
+        '• Click to unleash stored laser charges with pinpoint precision.'
+    ];
+    for (let i = 0; i < briefingLines.length; i++) {
+        text(briefingLines[i], infoX, infoY + 40 + i * 28);
+    }
+    pop();
+
+    if (menuGif) {
+        const gifWidth = Math.min(menuGif.width * 0.75, panelWidth / 2.5);
+        const gifHeight = gifWidth * (menuGif.height / menuGif.width);
+        const gifX = panelX + panelWidth - gifWidth - 60;
+        const gifY = panelY + 70;
+        push();
+        image(menuGif, gifX, gifY, gifWidth, gifHeight);
+        stroke(red(accent), green(accent), blue(accent), 140);
+        strokeWeight(2);
+        noFill();
+        rect(gifX - 6, gifY - 6, gifWidth + 12, gifHeight + 12, 18);
+        pop();
+    }
+
+    if (lastSessionSummary) {
+        drawLastRunSummary(panelX + panelWidth - 280, panelY + panelHeight - 160);
+    }
+
+    const calloutY = panelY + panelHeight - 70;
+    const pulse = (Math.sin(frameCount * 0.08) + 1) / 2;
+    const calloutAlpha = 150 + 90 * pulse;
+    push();
+    textAlign(CENTER, CENTER);
+    textSize(38);
+    fill(red(accent), green(accent), blue(accent), calloutAlpha);
+    text('Press ENTER to Launch', width / 2, calloutY);
     textSize(20);
-    fill(255, 200);
-    text('Press SPACE to Pause during the game', width / 2, height - 160);
+    fill(235);
+    text('Space: Pause · Click: Fire Lasers · Adjust volume via the slider above', width / 2, calloutY + 40);
+    pop();
 }
 
-function showGameOver() {
-    fill(0, 0, 0, 200);
-    rect(0, 0, width, height);
-    textAlign(CENTER, CENTER);
-    textSize(64);
-    const pulse = 150 + 105 * sin(frameCount * 0.1);
-    fill(200, pulse * 0.3, pulse * 0.3);
-    text('Game Over', width / 2, height / 2);
-    textSize(24);
-    text('Press R to Restart', width / 2, height / 2 + 50);
+function drawLastRunSummary(x, y) {
+    const summary = lastSessionSummary;
+    if (!summary) {
+        return;
+    }
+
+    const accent = summary.result === 'victory' ? color(120, 220, 180) : color(255, 120, 150);
+    const label = summary.result === 'victory' ? 'Last Run: Victory' : 'Last Run: Defeat';
+    const durationLabel = formatDuration(summary.durationMs);
+
+    push();
+    noStroke();
+    fill(12, 16, 34, 220);
+    rect(x - 30, y - 20, 260, 150, 18);
+    stroke(red(accent), green(accent), blue(accent), 150);
+    strokeWeight(2);
+    noFill();
+    rect(x - 34, y - 24, 268, 158, 22);
+    textAlign(LEFT, TOP);
+    textSize(20);
+    fill(255);
+    text(label, x - 10, y - 8);
+    textSize(16);
+    fill(220);
+    text(`Bricks shattered: ${summary.bricksDestroyed}`, x - 10, y + 28);
+    text(`Power-ups secured: ${summary.powerUpsCollected}`, x - 10, y + 52);
+    text(`Time in arena: ${durationLabel}`, x - 10, y + 76);
+    pop();
 }
 
-function showWin() {
-    fill(0, 0, 0, 200);
-    rect(0, 0, width, height);
+function drawEndScreen(state) {
+    const isVictory = state === GAME_STATES.VICTORY;
+    const accent = isVictory ? color(120, 220, 170) : color(255, 120, 150);
+    drawMenuBackdrop(accent);
+
+    const panelWidth = width * 0.5;
+    const panelHeight = height * 0.46;
+    const panelX = width / 2 - panelWidth / 2;
+    const panelY = height / 2 - panelHeight / 2 + 40;
+
+    push();
+    noStroke();
+    fill(10, 12, 28, 235);
+    rect(panelX, panelY, panelWidth, panelHeight, 32);
+    stroke(red(accent), green(accent), blue(accent), 130);
+    strokeWeight(4);
+    noFill();
+    rect(panelX - 10, panelY - 10, panelWidth + 20, panelHeight + 20, 36);
+    pop();
+
+    const title = isVictory ? 'Arena Secured!' : 'Shields Shattered';
+    const subtitle = isVictory ? 'Your volleys echo across the stars.' : 'The swarm overwhelmed the defense grid.';
+    push();
     textAlign(CENTER, CENTER);
-    textSize(64);
-    const pulse = 150 + 105 * sin(frameCount * 0.1);
-    fill(pulse * 0.3, 200, pulse * 0.3);
-    text('Game Won!', width / 2, height / 2);
-    textSize(24);
-    text('Press R to Restart', width / 2, height / 2 + 50);
+    textSize(82);
+    fill(255);
+    text(title, width / 2, panelY - 90);
+    textSize(26);
+    fill(220);
+    text(subtitle, width / 2, panelY - 40);
+    pop();
+
+    const summary = buildSummaryFromSession(sessionStats) || lastSessionSummary;
+    if (summary) {
+        const statsX = panelX + 60;
+        const statsY = panelY + 70;
+        push();
+        textAlign(LEFT, TOP);
+        textSize(26);
+        fill(255);
+        text('Mission Report', statsX, statsY);
+        textSize(18);
+        fill(225);
+        const lines = [
+            `Bricks shattered: ${summary.bricksDestroyed}`,
+            `Power-ups secured: ${summary.powerUpsCollected}`,
+            `Time in arena: ${formatDuration(summary.durationMs)}`
+        ];
+        for (let i = 0; i < lines.length; i++) {
+            text(lines[i], statsX, statsY + 40 + i * 28);
+        }
+
+        const flavor = isVictory ? 'The void falls silent... for now.' : 'Recalibrate your aim and strike back.';
+        text(flavor, statsX, statsY + 140);
+        pop();
+    }
+
+    const promptY = panelY + panelHeight - 70;
+    const pulse = (Math.sin(frameCount * 0.12) + 1) / 2;
+    const alpha = 150 + 90 * pulse;
+    push();
+    textAlign(CENTER, CENTER);
+    textSize(34);
+    fill(red(accent), green(accent), blue(accent), alpha);
+    text('Press ENTER to Retry', width / 2, promptY);
+    textSize(20);
+    fill(235);
+    text('Press M for Main Menu', width / 2, promptY + 40);
+    pop();
+}
+
+function createSessionStats() {
+    return {
+        bricksDestroyed: 0,
+        powerUpsCollected: 0,
+        startedAt: millis(),
+        endedAt: null,
+        result: null
+    };
+}
+
+function buildSummaryFromSession(stats) {
+    if (!stats) {
+        return null;
+    }
+
+    const start = typeof stats.startedAt === 'number' ? stats.startedAt : millis();
+    const end = typeof stats.endedAt === 'number' ? stats.endedAt : millis();
+    return {
+        result: stats.result || null,
+        bricksDestroyed: stats.bricksDestroyed || 0,
+        powerUpsCollected: stats.powerUpsCollected || 0,
+        durationMs: Math.max(0, end - start)
+    };
+}
+
+function finalizeSession(resultLabel) {
+    if (!sessionStats) {
+        return;
+    }
+
+    if (sessionStats.endedAt === null) {
+        sessionStats.endedAt = millis();
+    }
+
+    if (resultLabel && !sessionStats.result) {
+        sessionStats.result = resultLabel;
+    }
+
+    lastSessionSummary = buildSummaryFromSession(sessionStats);
+    if (lastSessionSummary && !lastSessionSummary.result) {
+        lastSessionSummary.result = resultLabel || 'defeat';
+    }
+}
+
+function formatDuration(durationMs) {
+    if (!durationMs || durationMs <= 0) {
+        return '0s';
+    }
+
+    const totalSeconds = Math.round(durationMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes <= 0) {
+        return `${seconds}s`;
+    }
+
+    return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+}
+
+function endCurrentSession(nextState, resultLabel) {
+    if (seaShanty && typeof seaShanty.stop === 'function') {
+        seaShanty.stop();
+    }
+
+    ensureMenuMusicPlaying();
+    finalizeSession(resultLabel);
+    gameState = nextState;
+    paused = false;
+    loop();
+}
+
+function goToTitleScreen() {
+    if (seaShanty && typeof seaShanty.stop === 'function') {
+        seaShanty.stop();
+    }
+
+    ensureMenuMusicPlaying();
+    bricks = [];
+    allBalls = [];
+    powerUps = [];
+    powerUpCatchEffects = [];
+    gravityWell = null;
+    if (laser) {
+        laser.isFiring = false;
+        laser.height = 0;
+        laser.holdTimer = 0;
+    }
+
+    sessionStats = null;
+    gameState = GAME_STATES.TITLE;
+    paused = false;
+    initializeMenuParticles();
+    loop();
+}
+
+function recordBrickDestroyed() {
+    if (sessionStats) {
+        sessionStats.bricksDestroyed += 1;
+    }
+}
+
+function recordPowerUpCollected() {
+    if (sessionStats) {
+        sessionStats.powerUpsCollected += 1;
+    }
 }
