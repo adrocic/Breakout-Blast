@@ -14,8 +14,8 @@ const LASER_PERSISTENCE_MS = 150;
 const LASER_SHOTS_PER_PICKUP = 3;
 
 const GRAVITY_WELL_DURATION_MS = 10000;
-const GRAVITY_WELL_PULL_FORCE = 900;
-const GRAVITY_WELL_CAPTURE_RADIUS = 90;
+const GRAVITY_WELL_PULL_FORCE = 3600;
+const GRAVITY_WELL_CAPTURE_RADIUS = 280;
 const GRAVITY_NOVA_MAX_BRICKS = 4;
 
 // Declare variables for the start and end points of the laser
