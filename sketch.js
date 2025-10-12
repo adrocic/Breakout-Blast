@@ -70,6 +70,8 @@ let menuGif;
 let brickHitSoundPlayers = [];
 let brickSoundVolume = 1;
 let masterVolumeSlider;
+let powerUpCatchSoundPlayer = null;
+let powerUpCatchEffects = [];
 
 function preload() {
     // Ensure p5.sound APIs exist in environments where the sound
@@ -169,6 +171,157 @@ function initializeBrickHitSounds() {
     const breakSound = createBrickBreakSound();
 
     brickHitSoundPlayers = [firstHit, secondHit, breakSound];
+}
+
+function initializePowerUpCatchSound() {
+    if (typeof p5 === 'undefined' ||
+        typeof p5.Oscillator !== 'function' ||
+        typeof p5.Envelope !== 'function') {
+        powerUpCatchSoundPlayer = null;
+        return;
+    }
+
+    const primaryOscillator = new p5.Oscillator('triangle');
+    const primaryEnvelope = new p5.Envelope();
+    primaryEnvelope.setADSR(0.001, 0.18, 0, 0.28);
+    primaryEnvelope.setRange(0.5, 0);
+    primaryOscillator.amp(primaryEnvelope);
+    primaryOscillator.start();
+
+    const shimmerOscillator = new p5.Oscillator('sine');
+    const shimmerEnvelope = new p5.Envelope();
+    shimmerEnvelope.setADSR(0.001, 0.24, 0, 0.22);
+    shimmerEnvelope.setRange(0.35, 0);
+    shimmerOscillator.amp(shimmerEnvelope);
+    shimmerOscillator.start();
+
+    powerUpCatchSoundPlayer = (type) => {
+        ensureAudioContextRunning();
+
+        const baseFrequency = type === 'laser' ? 540 : type === 'gravity well' ? 420 : 660;
+        const shimmerFrequency = type === 'laser' ? baseFrequency * 1.32 : type === 'gravity well' ? baseFrequency * 1.24 : baseFrequency * 1.5;
+
+        primaryOscillator.freq(baseFrequency);
+        primaryOscillator.freq(baseFrequency * 1.18, 0.16);
+
+        shimmerOscillator.freq(shimmerFrequency);
+        shimmerOscillator.freq(shimmerFrequency * 1.05, 0.18);
+
+        primaryEnvelope.setRange(0.5 * brickSoundVolume, 0);
+        shimmerEnvelope.setRange(0.35 * brickSoundVolume, 0);
+        primaryEnvelope.play(primaryOscillator);
+        shimmerEnvelope.play(shimmerOscillator);
+    };
+}
+
+function playPowerUpCatchSound(type) {
+    if (typeof powerUpCatchSoundPlayer === 'function') {
+        powerUpCatchSoundPlayer(type);
+    }
+}
+
+class PowerUpCatchEffect {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.startTime = millis();
+        this.duration = 460;
+        this.particles = Array.from({ length: 14 }, () => ({
+            angle: Math.random() * Math.PI * 2,
+            baseRadius: 10 + Math.random() * 12,
+            expansion: 45 + Math.random() * 55,
+            size: 6 + Math.random() * 6,
+            phase: Math.random() * Math.PI * 2
+        }));
+    }
+
+    draw() {
+        const elapsed = millis() - this.startTime;
+        const progress = elapsed / this.duration;
+
+        if (progress >= 1) {
+            return false;
+        }
+
+        const eased = Math.sin(Math.min(progress, 1) * Math.PI * 0.5);
+        const palette = getPowerUpEffectPalette(this.type);
+        const fade = 1 - progress;
+
+        push();
+        translate(this.x, this.y);
+
+        noStroke();
+        fill(palette.core.r, palette.core.g, palette.core.b, 190 * fade);
+        const coreSize = 22 + eased * 24;
+        ellipse(0, 0, coreSize, coreSize);
+
+        const ringRadius = 24 + eased * 70;
+        noFill();
+        stroke(palette.ring.r, palette.ring.g, palette.ring.b, 220 * fade);
+        strokeWeight(4);
+        ellipse(0, 0, ringRadius * 2, ringRadius * 2);
+
+        noStroke();
+        const swirl = eased * Math.PI * 2.4;
+        this.particles.forEach(particle => {
+            const distance = particle.baseRadius + eased * particle.expansion;
+            const wobble = Math.sin(swirl + particle.phase) * 4;
+            const px = Math.cos(particle.angle + swirl) * (distance + wobble);
+            const py = Math.sin(particle.angle + swirl) * (distance + wobble * 0.4);
+            const size = Math.max(1.5, particle.size * (1 - progress * 0.7));
+            fill(palette.particle.r, palette.particle.g, palette.particle.b, 200 * fade);
+            ellipse(px, py, size, size);
+        });
+
+        pop();
+
+        return true;
+    }
+}
+
+function getPowerUpEffectPalette(type) {
+    if (type === 'laser') {
+        return {
+            core: { r: 255, g: 120, b: 90 },
+            ring: { r: 255, g: 200, b: 130 },
+            particle: { r: 255, g: 160, b: 110 }
+        };
+    }
+
+    if (type === 'gravity well') {
+        return {
+            core: { r: 150, g: 170, b: 255 },
+            ring: { r: 120, g: 150, b: 255 },
+            particle: { r: 180, g: 210, b: 255 }
+        };
+    }
+
+    return {
+        core: { r: 130, g: 255, b: 200 },
+        ring: { r: 90, g: 235, b: 180 },
+        particle: { r: 170, g: 255, b: 220 }
+    };
+}
+
+function triggerPowerUpCatchFeedback(powerUp) {
+    powerUpCatchEffects.push(new PowerUpCatchEffect(powerUp.x, powerUp.y, powerUp.type));
+    playPowerUpCatchSound(powerUp.type);
+}
+
+function drawPowerUpCatchEffects() {
+    if (!powerUpCatchEffects.length) {
+        return;
+    }
+
+    const activeEffects = [];
+    for (const effect of powerUpCatchEffects) {
+        if (effect.draw()) {
+            activeEffects.push(effect);
+        }
+    }
+
+    powerUpCatchEffects = activeEffects;
 }
 
 function createBrickTone({ wave, startFreq, endFreq, baseAmp, attack, decay, sustain, release }) {
@@ -833,6 +986,7 @@ function setup() {
     background(backgroundImage, 1000)
 
     initializeBrickHitSounds();
+    initializePowerUpCatchSound();
 
 
     // Create volume slider
@@ -859,6 +1013,7 @@ function startGame() {
     bricks = [];
     allBalls = [];
     powerUps = [];
+    powerUpCatchEffects = [];
     laser.charges = 0;
     laser.isFiring = false;
     laser.height = 0;
@@ -1045,6 +1200,7 @@ function draw() {
         }
 
         if (pu.checkCollision(paddle)) {
+            triggerPowerUpCatchFeedback(pu);
             if (pu.type === 'extra ball') {
                 const extraBall = new Ball(pu.x, pu.y - 10);
                 //random speed and direction for extra ball
@@ -1065,6 +1221,7 @@ function draw() {
                 return item != pu;
             })
             powerUps = temp;
+            return;
         };
         pu.draw();
         pu.update();
@@ -1086,6 +1243,8 @@ function draw() {
         ball.draw();
         isDebugging && debug(ball);
     })
+
+    drawPowerUpCatchEffects();
 
     // Move balls
     allBalls.forEach(ball => {
