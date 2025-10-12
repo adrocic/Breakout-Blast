@@ -15,10 +15,14 @@ const LASER_DAMAGE_INTERVAL_MS = 100;
 const LASER_SHOTS_PER_PICKUP = 3;
 
 const GRAVITY_WELL_DURATION_MS = 20000;
-const GRAVITY_WELL_PULL_FORCE = 14400;
+const GRAVITY_WELL_PULL_FORCE = 28800;
 const GRAVITY_WELL_CAPTURE_RADIUS = 140;
 const GRAVITY_DAMAGE_INTERVAL_MS = 1000;
 const GRAVITY_NOVA_MAX_BRICKS = 4;
+
+const CAUGHT_TRAJECTORY_LENGTH = 260;
+const CAUGHT_AIM_ANGLE_OFFSET = 0.2;
+const CAUGHT_RELEASE_FLASH_DURATION = 180;
 
 // Declare variables for the start and end points of the laser
 let laser;
@@ -42,6 +46,10 @@ let paused = false;
 let isDebugging = false;
 let gravityWell;
 let gravityWellSound;
+let caughtBall = null;
+let caughtBallSide = null;
+let paddleCatchSoundPlayer = null;
+let paddleReleaseSoundPlayer = null;
 
 function removeTemporaryBalls() {
     if (!allBalls.length) {
@@ -49,6 +57,22 @@ function removeTemporaryBalls() {
     }
 
     allBalls = allBalls.filter(ball => !ball.isTemporary);
+
+    if (caughtBall && !allBalls.includes(caughtBall)) {
+        resetCaughtBallState();
+    }
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function resetCaughtBallState() {
+    if (caughtBall) {
+        caughtBall.isCaught = false;
+    }
+    caughtBall = null;
+    caughtBallSide = null;
 }
 
 // Tracks the current screen/scene
@@ -298,6 +322,189 @@ function playPowerUpCatchSound(type) {
     if (typeof powerUpCatchSoundPlayer === 'function') {
         powerUpCatchSoundPlayer(type);
     }
+}
+
+function initializePaddleCatchSounds() {
+    if (typeof p5 === 'undefined' ||
+        typeof p5.Oscillator !== 'function' ||
+        typeof p5.Envelope !== 'function' ||
+        typeof p5.Noise !== 'function') {
+        paddleCatchSoundPlayer = null;
+        paddleReleaseSoundPlayer = null;
+        return;
+    }
+
+    const catchOscillator = new p5.Oscillator('triangle');
+    const catchEnvelope = new p5.Envelope();
+    catchEnvelope.setADSR(0.001, 0.12, 0, 0.26);
+    catchEnvelope.setRange(0.45, 0);
+    catchOscillator.amp(catchEnvelope);
+    catchOscillator.start();
+
+    paddleCatchSoundPlayer = () => {
+        ensureAudioContextRunning();
+        catchOscillator.freq(560);
+        catchOscillator.freq(340, 0.18);
+        catchEnvelope.setRange(0.45 * brickSoundVolume, 0);
+        catchEnvelope.play(catchOscillator);
+    };
+
+    const releaseOscillator = new p5.Oscillator('sawtooth');
+    const releaseEnvelope = new p5.Envelope();
+    releaseEnvelope.setADSR(0.001, 0.18, 0, 0.32);
+    releaseEnvelope.setRange(0.55, 0);
+    releaseOscillator.amp(releaseEnvelope);
+    releaseOscillator.start();
+
+    const releaseNoise = new p5.Noise('white');
+    const releaseNoiseEnvelope = new p5.Envelope();
+    releaseNoiseEnvelope.setADSR(0.001, 0.16, 0, 0.28);
+    releaseNoiseEnvelope.setRange(0.32, 0);
+    releaseNoise.amp(releaseNoiseEnvelope);
+    releaseNoise.start();
+
+    paddleReleaseSoundPlayer = () => {
+        ensureAudioContextRunning();
+        releaseOscillator.freq(520);
+        releaseOscillator.freq(820, 0.18);
+        releaseEnvelope.setRange(0.55 * brickSoundVolume, 0);
+        releaseEnvelope.play(releaseOscillator);
+        releaseNoiseEnvelope.setRange(0.32 * brickSoundVolume, 0);
+        releaseNoiseEnvelope.play(releaseNoise);
+    };
+}
+
+function playPaddleCatchSound() {
+    if (typeof paddleCatchSoundPlayer === 'function') {
+        paddleCatchSoundPlayer();
+    }
+}
+
+function playPaddleReleaseSound() {
+    if (typeof paddleReleaseSoundPlayer === 'function') {
+        paddleReleaseSoundPlayer();
+    }
+}
+
+function catchBallOnPaddle(ball, paddle, side) {
+    if (!ball || !paddle) {
+        return;
+    }
+
+    resetCaughtBallState();
+
+    caughtBall = ball;
+    caughtBallSide = side;
+    ball.isCaught = true;
+    ball.xspeed = 0;
+    ball.yspeed = 0;
+    ball.prevX = ball.x;
+    ball.prevY = ball.y;
+    ball.caughtOffsetY = clamp(ball.y - paddle.y, ball.diameter / 2, paddle.height - ball.diameter / 2);
+    ball.caughtAt = millis();
+    ball.releaseFlashTimer = 0;
+    ball.aimAngle = -Math.PI / 2;
+
+    if (typeof paddle.startBounce === 'function') {
+        paddle.startBounce();
+    }
+
+    updateCaughtBallState();
+    playPaddleCatchSound();
+}
+
+function updateCaughtBallState() {
+    if (!caughtBall || !caughtBall.isCaught) {
+        return;
+    }
+
+    if (!paddle || !allBalls.includes(caughtBall)) {
+        resetCaughtBallState();
+        return;
+    }
+
+    const ball = caughtBall;
+    ball.prevX = ball.x;
+    ball.prevY = ball.y;
+    const offsetX = caughtBallSide === 'left'
+        ? -ball.diameter / 2
+        : paddle.width + ball.diameter / 2;
+    ball.caughtOffsetY = clamp(ball.caughtOffsetY, ball.diameter / 2, paddle.height - ball.diameter / 2);
+    ball.x = paddle.x + offsetX;
+    ball.y = paddle.y + ball.caughtOffsetY;
+
+    updateCaughtBallAim();
+}
+
+function updateCaughtBallAim() {
+    if (!caughtBall || !caughtBall.isCaught) {
+        return;
+    }
+
+    const ball = caughtBall;
+    let angle = Math.atan2(mouseY - ball.y, mouseX - ball.x);
+    if (Number.isNaN(angle)) {
+        angle = -Math.PI / 2;
+    }
+
+    if (caughtBallSide === 'left') {
+        const minAngle = -Math.PI + CAUGHT_AIM_ANGLE_OFFSET;
+        const maxAngle = -Math.PI / 2 - CAUGHT_AIM_ANGLE_OFFSET;
+        ball.aimAngle = clamp(angle, minAngle, maxAngle);
+    } else {
+        const minAngle = -Math.PI / 2 + CAUGHT_AIM_ANGLE_OFFSET;
+        const maxAngle = -CAUGHT_AIM_ANGLE_OFFSET;
+        ball.aimAngle = clamp(angle, minAngle, maxAngle);
+    }
+}
+
+function drawCaughtBallAimingGuide() {
+    if (!caughtBall || !caughtBall.isCaught) {
+        return;
+    }
+
+    const ball = caughtBall;
+    const angle = typeof ball.aimAngle === 'number' ? ball.aimAngle : -Math.PI / 2;
+    const endX = ball.x + Math.cos(angle) * CAUGHT_TRAJECTORY_LENGTH;
+    const endY = ball.y + Math.sin(angle) * CAUGHT_TRAJECTORY_LENGTH;
+    const elapsed = millis() - (ball.caughtAt || 0);
+    const pulse = 0.5 + 0.5 * Math.sin(elapsed / 120);
+
+    push();
+    stroke(255, 240, 160, 190 + pulse * 60);
+    strokeWeight(4 + pulse * 2);
+    line(ball.x, ball.y, endX, endY);
+
+    push();
+    translate(endX, endY);
+    rotate(angle);
+    noStroke();
+    fill(255, 210, 140, 200);
+    const arrowLength = 24;
+    const arrowWidth = 11;
+    triangle(0, 0, -arrowLength, arrowWidth, -arrowLength, -arrowWidth);
+    pop();
+
+    pop();
+}
+
+function fireCaughtBall() {
+    if (!caughtBall || !caughtBall.isCaught) {
+        return;
+    }
+
+    const ball = caughtBall;
+    const angle = typeof ball.aimAngle === 'number' ? ball.aimAngle : -Math.PI / 2;
+    const speed = 13;
+    ball.isCaught = false;
+    ball.xspeed = Math.cos(angle) * speed;
+    ball.yspeed = Math.sin(angle) * speed;
+    ball.prevX = ball.x;
+    ball.prevY = ball.y;
+    ball.releaseFlashTimer = CAUGHT_RELEASE_FLASH_DURATION;
+    ball.startBounce();
+    playPaddleReleaseSound();
+    resetCaughtBallState();
 }
 
 class PowerUpCatchEffect {
@@ -770,15 +977,33 @@ class Ball {
         this.bounceMagnitude = 7;
         this.gravityDamageCooldown = 0;
         this.isTemporary = !!options.isTemporary;
+        this.prevX = this.x;
+        this.prevY = this.y;
+        this.isCaught = false;
+        this.caughtOffsetY = 0;
+        this.caughtAt = 0;
+        this.aimAngle = -Math.PI / 2;
+        this.releaseFlashTimer = 0;
     }
 
     update(dt) {
         if (this.gravityDamageCooldown > 0) {
             this.gravityDamageCooldown = Math.max(0, this.gravityDamageCooldown - dt);
         }
+
+        if (this.releaseFlashTimer > 0) {
+            this.releaseFlashTimer = Math.max(0, this.releaseFlashTimer - dt);
+        }
     }
 
     move() {
+        this.prevX = this.x;
+        this.prevY = this.y;
+
+        if (this.isCaught) {
+            return;
+        }
+
         this.x += this.xspeed;
         this.y += this.yspeed;
     }
@@ -829,6 +1054,12 @@ class Ball {
             }
         }
 
+        if (this.isCaught) {
+            const catchElapsed = millis() - (this.caughtAt || 0);
+            const catchPulse = 1 + 0.08 * Math.sin(catchElapsed / 110);
+            scaleAmount *= catchPulse;
+        }
+
         push();
         translate(this.x, this.y + offsetY);
         const renderDiameter = this.diameter * scaleAmount;
@@ -843,11 +1074,32 @@ class Ball {
             image(this.currentBallImage, -halfRender, -halfRender, renderDiameter, renderDiameter);
         }
 
+        if (this.isCaught) {
+            const auraElapsed = millis() - (this.caughtAt || 0);
+            const auraPulse = 1 + 0.1 * Math.sin(auraElapsed / 100);
+            noFill();
+            stroke(255, 220, 140, 150 + Math.sin(auraElapsed / 90) * 60);
+            strokeWeight(3);
+            ellipse(0, 0, renderDiameter * auraPulse * 1.2, renderDiameter * auraPulse * 1.2);
+            stroke(255, 255, 220, 130);
+            strokeWeight(2);
+            ellipse(0, 0, renderDiameter * auraPulse * 0.85, renderDiameter * auraPulse * 0.85);
+        }
+
+        if (this.releaseFlashTimer > 0) {
+            const flashProgress = this.releaseFlashTimer / CAUGHT_RELEASE_FLASH_DURATION;
+            const flashScale = 1 + flashProgress * 1.4;
+            const flashAlpha = 200 * flashProgress;
+            noStroke();
+            fill(255, 190, 130, flashAlpha);
+            ellipse(0, 0, renderDiameter * flashScale, renderDiameter * flashScale);
+        }
+
         pop();
     }
 
     startBounce() {
-        if (isGravityWellActive()) {
+        if (isGravityWellActive() || this.isCaught) {
             this.bounceStartTime = null;
             return;
         }
@@ -856,25 +1108,43 @@ class Ball {
     }
 
     checkCollision(paddle) {
-        // Check if the ball is colliding with the paddle
-        if (collideCircleRect(this, paddle)) {
-            const ballPosition = this.x
-            const paddleCenter = (paddle.width / 2) + paddle.x;
-            const ballDistanceFromCenter = Math.abs(ballPosition + 15 - paddleCenter);
-            const ballPaddleCollideMultiplier = ballDistanceFromCenter / (paddle.width / 2) * 3
-            smite.play()
-            if (ballPosition > paddleCenter) {
-                this.xspeed += ballPaddleCollideMultiplier
-            } else {
-                this.xspeed -= ballPaddleCollideMultiplier;
-            }
-            this.startBounce();
-            if (typeof paddle.startBounce === 'function') {
-                paddle.startBounce();
-            }
-            return true;
+        if (this.isCaught) {
+            return 'caught';
         }
-        return false;  // Return false to indicate that the paddle was not hit
+
+        if (!collideCircleRect(this, paddle)) {
+            return 'none';
+        }
+
+        const ballTop = this.y - this.diameter / 2;
+        const ballBottom = this.y + this.diameter / 2;
+        const withinVertical = ballBottom > paddle.y && ballTop < paddle.y + paddle.height;
+
+        if (!caughtBall && withinVertical) {
+            const cameFromLeft = this.prevX + this.diameter / 2 <= paddle.x;
+            const cameFromRight = this.prevX - this.diameter / 2 >= paddle.x + paddle.width;
+
+            if (cameFromLeft || cameFromRight) {
+                catchBallOnPaddle(this, paddle, cameFromLeft ? 'left' : 'right');
+                return 'catch';
+            }
+        }
+
+        const ballPosition = this.x;
+        const paddleCenter = (paddle.width / 2) + paddle.x;
+        const ballDistanceFromCenter = Math.abs(ballPosition + 15 - paddleCenter);
+        const ballPaddleCollideMultiplier = ballDistanceFromCenter / (paddle.width / 2) * 3;
+        smite.play();
+        if (ballPosition > paddleCenter) {
+            this.xspeed += ballPaddleCollideMultiplier;
+        } else {
+            this.xspeed -= ballPaddleCollideMultiplier;
+        }
+        this.startBounce();
+        if (typeof paddle.startBounce === 'function') {
+            paddle.startBounce();
+        }
+        return 'bounce';
     }
 }
 
@@ -1056,6 +1326,10 @@ function applyGravityWellForce(ball, dtSeconds) {
         return;
     }
 
+    if (ball.isCaught) {
+        return;
+    }
+
     const dx = gravityWell.x - ball.x;
     const dy = gravityWell.y - ball.y;
     const distance = Math.hypot(dx, dy) || 0.0001;
@@ -1079,6 +1353,14 @@ function applyGravityWellForce(ball, dtSeconds) {
 function triggerGravityNova(ball) {
     if (!gravityWell || !gravityWell.active) {
         return;
+    }
+
+    if (ball.isCaught) {
+        if (caughtBall === ball) {
+            resetCaughtBallState();
+        } else {
+            ball.isCaught = false;
+        }
     }
 
     gravityWell.active = false;
@@ -1240,6 +1522,7 @@ function setup() {
     initializeBrickHitSounds();
     initializePowerUpCatchSound();
     initializeGravityWellSound();
+    initializePaddleCatchSounds();
 
 
     // Create volume slider
@@ -1267,6 +1550,7 @@ function startGame() {
     allBalls = [];
     powerUps = [];
     powerUpCatchEffects = [];
+    resetCaughtBallState();
     laser.charges = 0;
     laser.isFiring = false;
     laser.height = 0;
@@ -1332,7 +1616,11 @@ function keyPressed() {
 
 function mousePressed() {
     if (mouseButton === LEFT) {
-        attemptLaserFire();
+        if (caughtBall && caughtBall.isCaught) {
+            fireCaughtBall();
+        } else {
+            attemptLaserFire();
+        }
     }
 }
 
@@ -1361,6 +1649,7 @@ function draw() {
 
     updateLaserState();
     updateGravityWell();
+    updateCaughtBallState();
 
     fill(0, 0, 0, 100);
     if (paused) {
@@ -1509,6 +1798,7 @@ function draw() {
     })
 
     drawPowerUpCatchEffects();
+    drawCaughtBallAimingGuide();
 
     const dtForBalls = typeof deltaTime === 'number' ? deltaTime : 16.67;
     allBalls.forEach(ball => {
@@ -1524,6 +1814,9 @@ function draw() {
 
     // Check for ball collision with walls
     allBalls.forEach(ball => {
+        if (ball.isCaught) {
+            return;
+        }
         if (ball.x > width || ball.x < 0) {
             ball.xspeed *= -1;
         }
@@ -1531,6 +1824,9 @@ function draw() {
             ball.yspeed *= -1;
         }
         if (ball.y > height) {
+            if (caughtBall === ball) {
+                resetCaughtBallState();
+            }
             const temp = allBalls.filter(tempBall => {
                 return tempBall.id !== ball.id
             })
@@ -1540,7 +1836,8 @@ function draw() {
 
     // Check for paddle collision with ball
     allBalls.forEach(ball => {
-        if (ball.checkCollision(paddle)) {
+        const collisionResult = ball.checkCollision(paddle);
+        if (collisionResult === 'bounce') {
             ball.yspeed *= -1;
         }
     })
@@ -2059,6 +2356,7 @@ function endCurrentSession(nextState, resultLabel) {
         gravityWellSound.stop();
     }
 
+    resetCaughtBallState();
     ensureMenuMusicPlaying();
     finalizeSession(resultLabel);
     gameState = nextState;
@@ -2076,6 +2374,7 @@ function goToTitleScreen() {
     allBalls = [];
     powerUps = [];
     powerUpCatchEffects = [];
+    resetCaughtBallState();
     gravityWell = null;
     if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
         gravityWellSound.stop();
