@@ -144,6 +144,8 @@ let seaShanty;
 let smite;
 let menuMusic;
 let menuGif;
+let menuTrack = null;
+let gameplayTrack = null;
 
 let brickHitSoundPlayers = [];
 let brickSoundVolume = 1;
@@ -212,6 +214,151 @@ function ensureAudioContextRunning() {
     const context = getAudioContext();
     if (context && typeof context.resume === 'function' && context.state !== 'running') {
         context.resume();
+    }
+}
+
+
+function createChiptuneTrack(config) {
+    if (typeof p5 === 'undefined' || typeof p5.Oscillator !== 'function' || typeof p5.Envelope !== 'function') {
+        return null;
+    }
+
+    const oscillatorA = new p5.Oscillator(config.waveA || 'square');
+    const oscillatorB = new p5.Oscillator(config.waveB || 'triangle');
+    const envelopeA = new p5.Envelope();
+    const envelopeB = new p5.Envelope();
+
+    envelopeA.setADSR(0.003, 0.06, 0.0, 0.08);
+    envelopeB.setADSR(0.002, 0.04, 0.0, 0.08);
+    envelopeA.setRange((config.volumeA || 0.16) * brickSoundVolume, 0);
+    envelopeB.setRange((config.volumeB || 0.1) * brickSoundVolume, 0);
+
+    oscillatorA.amp(envelopeA);
+    oscillatorB.amp(envelopeB);
+    oscillatorA.start();
+    oscillatorB.start();
+
+    const beatMs = 60000 / (config.bpm || 128);
+
+    return {
+        playing: false,
+        index: 0,
+        nextNoteTime: 0,
+        start() {
+            ensureAudioContextRunning();
+            this.playing = true;
+            this.index = 0;
+            this.nextNoteTime = 0;
+        },
+        stop() {
+            this.playing = false;
+            oscillatorA.amp(0, 0.06);
+            oscillatorB.amp(0, 0.06);
+        },
+        setVolume(multiplier) {
+            envelopeA.setRange((config.volumeA || 0.16) * multiplier, 0);
+            envelopeB.setRange((config.volumeB || 0.1) * multiplier, 0);
+        },
+        update(nowMs) {
+            if (!this.playing || !config.pattern || !config.pattern.length) {
+                return;
+            }
+
+            if (this.nextNoteTime === 0) {
+                this.nextNoteTime = nowMs;
+            }
+
+            while (nowMs >= this.nextNoteTime) {
+                const step = config.pattern[this.index % config.pattern.length];
+                const beats = step.beats || 1;
+                const durationMs = beatMs * beats;
+
+                if (!step.rest) {
+                    const frequency = midiToFreq(step.midi);
+                    oscillatorA.freq(frequency, 0.02);
+                    oscillatorB.freq(frequency * (step.detuneMultiplier || 1.5), 0.02);
+                    envelopeA.play(oscillatorA);
+                    envelopeB.play(oscillatorB);
+                }
+
+                this.index += 1;
+                this.nextNoteTime += durationMs;
+            }
+        }
+    };
+}
+
+function initializeChiptuneMusic() {
+    menuTrack = createChiptuneTrack({
+        bpm: 152,
+        waveA: 'square',
+        waveB: 'triangle',
+        volumeA: 0.14,
+        volumeB: 0.08,
+        pattern: [
+            { midi: 72, beats: 0.5 }, { midi: 76, beats: 0.5 }, { midi: 79, beats: 0.5 }, { midi: 84, beats: 0.5 },
+            { midi: 83, beats: 0.5 }, { midi: 79, beats: 0.5 }, { midi: 76, beats: 0.5 }, { midi: 72, beats: 0.5 },
+            { midi: 74, beats: 0.5 }, { midi: 77, beats: 0.5 }, { midi: 81, beats: 0.5 }, { midi: 84, beats: 0.5 },
+            { midi: 81, beats: 0.5 }, { midi: 77, beats: 0.5 }, { midi: 74, beats: 0.5 }, { midi: 71, beats: 0.5 }
+        ]
+    });
+
+    gameplayTrack = createChiptuneTrack({
+        bpm: 168,
+        waveA: 'square',
+        waveB: 'sawtooth',
+        volumeA: 0.13,
+        volumeB: 0.09,
+        pattern: [
+            { midi: 64, beats: 0.5 }, { midi: 67, beats: 0.5 }, { midi: 71, beats: 0.5 }, { midi: 76, beats: 0.5 },
+            { midi: 74, beats: 0.5 }, { midi: 71, beats: 0.5 }, { midi: 67, beats: 0.5 }, { midi: 64, beats: 0.5 },
+            { midi: 62, beats: 0.5 }, { midi: 66, beats: 0.5 }, { midi: 69, beats: 0.5 }, { midi: 74, beats: 0.5 },
+            { midi: 71, beats: 0.5 }, { midi: 69, beats: 0.5 }, { midi: 66, beats: 0.5 }, { midi: 62, beats: 0.5 }
+        ]
+    });
+}
+
+function stopGameplayMusic() {
+    if (gameplayTrack && typeof gameplayTrack.stop === 'function') {
+        gameplayTrack.stop();
+    }
+
+    if (seaShanty && typeof seaShanty.stop === 'function') {
+        seaShanty.stop();
+    }
+}
+
+function startGameplayMusic() {
+    if (gameplayTrack && typeof gameplayTrack.start === 'function') {
+        gameplayTrack.start();
+        return;
+    }
+
+    if (seaShanty && typeof seaShanty.setLoop === 'function') {
+        seaShanty.setLoop(true);
+        seaShanty.play();
+    }
+}
+
+function startMenuMusic() {
+    if (menuTrack && typeof menuTrack.start === 'function') {
+        menuTrack.start();
+        return;
+    }
+
+    if (menuMusic && typeof menuMusic.setLoop === 'function') {
+        menuMusic.setLoop(true);
+        menuMusic.play();
+    }
+}
+
+function updateMusicSequencers() {
+    const now = getCurrentTimeMs();
+    if (menuTrack && typeof menuTrack.update === 'function') {
+        menuTrack.update(now);
+    }
+    if (gameplayTrack && typeof gameplayTrack.update === 'function') {
+        gameplayTrack.update(now);
     }
 }
 
@@ -788,6 +935,14 @@ function updateMasterVolume(newVolume) {
             sound.setVolume(clampedVolume);
         }
     });
+
+    if (menuTrack && typeof menuTrack.setVolume === 'function') {
+        menuTrack.setVolume(clampedVolume);
+    }
+
+    if (gameplayTrack && typeof gameplayTrack.setVolume === 'function') {
+        gameplayTrack.setVolume(clampedVolume);
+    }
 
     if (gravityWellSound && typeof gravityWellSound.setVolume === 'function') {
         gravityWellSound.setVolume();
@@ -1573,14 +1728,13 @@ function setup() {
     initializePowerUpCatchSound();
     initializeGravityWellSound();
     initializePaddleCatchSounds();
-
+    initializeChiptuneMusic();
 
     initializeMenuDomUi();
     updateMasterVolume(brickSoundVolume);
 
     // Start with the menu displayed
-    menuMusic.setLoop(true);
-    menuMusic.play();
+    startMenuMusic();
     initializeMenuParticles();
     resetPaddleInputState();
 }
@@ -1615,9 +1769,13 @@ function startGame() {
     paddle.update();
 
     allBalls.push(new Ball());
-    menuMusic.stop();
-    seaShanty.setLoop(true);
-    seaShanty.play();
+    if (menuTrack && typeof menuTrack.stop === 'function') {
+        menuTrack.stop();
+    }
+    if (menuMusic && typeof menuMusic.stop === 'function') {
+        menuMusic.stop();
+    }
+    startGameplayMusic();
     gameState = GAME_STATES.PLAYING;
     sessionStats = createSessionStats();
     syncMenuUi();
@@ -1637,10 +1795,10 @@ function keyPressed() {
     if (gameState === GAME_STATES.PLAYING && key === ' ') {  // Toggle pause with spacebar
         paused = !paused;
         if (paused) {
-            seaShanty.stop();
+            stopGameplayMusic();
             noLoop();
         } else {
-            seaShanty.play();
+            startGameplayMusic();
             loop();
         }
     }
@@ -1674,6 +1832,8 @@ function mousePressed() {
 }
 
 function draw() {
+    updateMusicSequencers();
+
     if (gameState === GAME_STATES.TITLE) {
         ensureMenuMusicPlaying();
         syncMenuUi();
@@ -1706,18 +1866,6 @@ function draw() {
     updateCaughtBallState();
 
     fill(0, 0, 0, 100);
-    if (paused) {
-        fill(126, 189, 244, 130);
-        rect(0, 0, 1920, 1080);
-        drawBubblePanel(width / 2 - 240, height / 2 - 130, 480, 260, color(125, 201, 255));
-        textAlign(CENTER, CENTER);
-        textSize(58);
-        fill(63, 112, 180);
-        text('Paused', 1920 / 2, 1080 / 2 - 24);
-        textSize(24);
-        fill(90, 125, 173);
-        text('Press SPACE to keep bouncing!', 1920 / 2, 1080 / 2 + 32);
-    }
 
     // Draw bricks
     for (let i = bricks.length - 1; i >= 0; i--) {
@@ -1909,6 +2057,24 @@ function draw() {
     if (!bricks.length) {
         endCurrentSession(GAME_STATES.VICTORY, 'victory');
         return;
+    }
+
+    if (paused) {
+        push();
+        noStroke();
+        fill(255, 255, 255, 255);
+        rect(0, 0, width, height);
+        fill(142, 209, 255, 220);
+        rect(0, 0, width, height);
+        drawBubblePanel(width / 2 - 300, height / 2 - 170, 600, 340, color(114, 195, 255));
+        textAlign(CENTER, CENTER);
+        textSize(76);
+        fill(44, 98, 162);
+        text('Paused', width / 2, height / 2 - 36);
+        textSize(28);
+        fill(72, 120, 177);
+        text('Press SPACE to jump back in!', width / 2, height / 2 + 30);
+        pop();
     }
 }
 
@@ -2171,6 +2337,13 @@ function syncMenuUi() {
 }
 
 function ensureMenuMusicPlaying() {
+    if (menuTrack && typeof menuTrack.start === 'function') {
+        if (!menuTrack.playing) {
+            menuTrack.start();
+        }
+        return;
+    }
+
     if (!menuMusic || typeof menuMusic.isPlaying !== 'function') {
         return;
     }
@@ -2545,9 +2718,7 @@ function formatDuration(durationMs) {
 }
 
 function endCurrentSession(nextState, resultLabel) {
-    if (seaShanty && typeof seaShanty.stop === 'function') {
-        seaShanty.stop();
-    }
+    stopGameplayMusic();
 
     if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
         gravityWellSound.stop();
@@ -2563,9 +2734,7 @@ function endCurrentSession(nextState, resultLabel) {
 }
 
 function goToTitleScreen() {
-    if (seaShanty && typeof seaShanty.stop === 'function') {
-        seaShanty.stop();
-    }
+    stopGameplayMusic();
 
     ensureMenuMusicPlaying();
     bricks = [];
