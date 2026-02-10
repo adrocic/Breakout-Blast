@@ -1,16 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <!-- Use a known-compatible version of p5.js and p5.sound. Loading the
-         unpinned "latest" build can introduce breaking changes (such as the
-         removal of registerMethod) that stop the sketch from running. -->
-    <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/addons/p5.sound.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-
-    <link rel="icon" type="image/png" href="Assets/ball.png">
+    <link rel="icon" type="image/png" href="/Assets/ball.png">
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   </head>
   <body>
@@ -28,7 +22,7 @@
         </div>
         <ul class="menu-list">
           <li>Move with <strong>A / D</strong> or <strong>← / →</strong>.</li>
-          <li>Click to fire lasers. Space toggles pause.</li>
+          <li>Press <strong>F</strong> to fire lasers. Space toggles pause.</li>
           <li>Catch power-ups for bonus balls and special abilities.</li>
         </ul>
         <label class="volume-control" for="menu-volume-range">
@@ -47,9 +41,22 @@
           <button id="menu-main-button" class="menu-button">Main Menu</button>
         </div>
       </article>
+
+      <article id="menu-pause-panel" class="menu-panel hidden" aria-label="Pause menu">
+        <h2>Paused</h2>
+        <p class="subtitle">Take a breather — your run will be right here.</p>
+        <div class="menu-actions">
+          <button id="menu-resume-button" class="menu-button primary">Resume</button>
+          <button id="menu-pause-retry-button" class="menu-button">Restart</button>
+          <button id="menu-pause-main-button" class="menu-button">Main Menu</button>
+        </div>
+        <ul class="menu-list">
+          <li><strong>Space</strong> toggles pause.</li>
+          <li><strong>F</strong> fires lasers when available.</li>
+        </ul>
+      </article>
     </section>
 
-    <script src="menu3d.js"></script>
-    <script src="sketch.js"></script>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>
