@@ -147,7 +147,7 @@ let menuGif;
 
 let brickHitSoundPlayers = [];
 let brickSoundVolume = 1;
-let masterVolumeSlider;
+let menuUiElements = null;
 let powerUpCatchSoundPlayer = null;
 let powerUpCatchEffects = [];
 
@@ -1575,23 +1575,8 @@ function setup() {
     initializePaddleCatchSounds();
 
 
-    // Create volume slider
-    masterVolumeSlider = createInput(brickSoundVolume, 'range');
-    masterVolumeSlider.attribute('min', 0);
-    masterVolumeSlider.attribute('max', 1);
-    masterVolumeSlider.attribute('step', 0.01);
-    masterVolumeSlider.input(() => {
-        const sliderValue = parseFloat(masterVolumeSlider.value());
-        if (!isNaN(sliderValue)) {
-            updateMasterVolume(sliderValue);
-        }
-    });
-    updateMasterVolume(parseFloat(masterVolumeSlider.value()) || brickSoundVolume);
-    masterVolumeSlider.position(26, 18);
-    masterVolumeSlider.size(200);
-    masterVolumeSlider.style('accent-color', '#76c4ff');
-    masterVolumeSlider.style('opacity', '0.92');
-
+    initializeMenuDomUi();
+    updateMasterVolume(brickSoundVolume);
 
     // Start with the menu displayed
     menuMusic.setLoop(true);
@@ -1635,6 +1620,7 @@ function startGame() {
     seaShanty.play();
     gameState = GAME_STATES.PLAYING;
     sessionStats = createSessionStats();
+    syncMenuUi();
     paused = false;
     loop();
 }
@@ -1690,13 +1676,17 @@ function mousePressed() {
 function draw() {
     if (gameState === GAME_STATES.TITLE) {
         ensureMenuMusicPlaying();
-        drawTitleScreen();
+        syncMenuUi();
+        clear();
         return;
     }
 
     if (gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY) {
         ensureMenuMusicPlaying();
-        drawEndScreen(gameState);
+        syncMenuUi();
+        clear();
+        fill(255, 255, 255, 35);
+        rect(0, 0, width, height);
         return;
     }
 
@@ -1704,6 +1694,7 @@ function draw() {
         return;
     }
 
+    syncMenuUi();
     background(backgroundImage);
 
     if (paddle && typeof paddle.update === 'function') {
@@ -2068,6 +2059,115 @@ const debug = (shape) => {
     }
     // Restore the original drawing style and matrix
     pop();
+}
+
+
+function initializeMenuDomUi() {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    const root = document.getElementById('menu-ui');
+    if (!root) {
+        return;
+    }
+
+    menuUiElements = {
+        root,
+        titlePanel: document.getElementById('menu-title-panel'),
+        endPanel: document.getElementById('menu-end-panel'),
+        endTitle: document.getElementById('menu-end-title'),
+        endSubtitle: document.getElementById('menu-end-subtitle'),
+        summary: document.getElementById('menu-summary'),
+        startButton: document.getElementById('menu-start-button'),
+        retryButton: document.getElementById('menu-retry-button'),
+        mainMenuButton: document.getElementById('menu-main-button'),
+        volumeRange: document.getElementById('menu-volume-range')
+    };
+
+    if (menuUiElements.startButton) {
+        menuUiElements.startButton.addEventListener('click', () => {
+            if (gameState === GAME_STATES.TITLE) {
+                smite && typeof smite.play === 'function' && smite.play();
+                startGame();
+            }
+        });
+    }
+
+    if (menuUiElements.retryButton) {
+        menuUiElements.retryButton.addEventListener('click', () => {
+            if (gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY) {
+                smite && typeof smite.play === 'function' && smite.play();
+                startGame();
+            }
+        });
+    }
+
+    if (menuUiElements.mainMenuButton) {
+        menuUiElements.mainMenuButton.addEventListener('click', () => {
+            smite && typeof smite.play === 'function' && smite.play();
+            goToTitleScreen();
+        });
+    }
+
+    if (menuUiElements.volumeRange) {
+        menuUiElements.volumeRange.value = String(brickSoundVolume);
+        menuUiElements.volumeRange.addEventListener('input', event => {
+            const sliderValue = parseFloat(event.target.value);
+            if (!isNaN(sliderValue)) {
+                updateMasterVolume(sliderValue);
+            }
+        });
+    }
+
+    syncMenuUi();
+}
+
+function syncMenuUi() {
+    if (!menuUiElements || typeof document === 'undefined') {
+        return;
+    }
+
+    const isTitle = gameState === GAME_STATES.TITLE;
+    const isEnd = gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY;
+
+    menuUiElements.root.classList.toggle('visible', isTitle || isEnd);
+    menuUiElements.root.classList.toggle('end-state', isEnd);
+
+    if (menuUiElements.titlePanel) {
+        menuUiElements.titlePanel.classList.toggle('hidden', !isTitle);
+    }
+
+    if (menuUiElements.endPanel) {
+        menuUiElements.endPanel.classList.toggle('hidden', !isEnd);
+    }
+
+    if (isEnd && menuUiElements.endTitle && menuUiElements.endSubtitle) {
+        const won = gameState === GAME_STATES.VICTORY;
+        menuUiElements.endTitle.textContent = won ? 'Course Cleared!' : 'Cloudy Crash!';
+        menuUiElements.endSubtitle.textContent = won
+            ? 'You bounced through every block in style.'
+            : 'You got close — jump back in for another run.';
+
+        const summary = buildSummaryFromSession(sessionStats) || lastSessionSummary;
+        if (menuUiElements.summary) {
+            if (summary) {
+                menuUiElements.summary.innerHTML = `
+                    <li><strong>Bricks shattered:</strong> ${summary.bricksDestroyed}</li>
+                    <li><strong>Power-ups collected:</strong> ${summary.powerUpsCollected}</li>
+                    <li><strong>Time in arena:</strong> ${formatDuration(summary.durationMs)}</li>
+                `;
+            } else {
+                menuUiElements.summary.innerHTML = '<li>Play a round to track your stats!</li>';
+            }
+        }
+    }
+
+    if (window.MenuScene && typeof window.MenuScene.setActive === 'function') {
+        window.MenuScene.setActive(isTitle || isEnd);
+        const theme = gameState === GAME_STATES.VICTORY ? 'victory' : gameState === GAME_STATES.GAME_OVER ? 'defeat' : 'title';
+        window.MenuScene.setTheme(theme);
+    }
 }
 
 function ensureMenuMusicPlaying() {
@@ -2458,6 +2558,7 @@ function endCurrentSession(nextState, resultLabel) {
     finalizeSession(resultLabel);
     gameState = nextState;
     paused = false;
+    syncMenuUi();
     loop();
 }
 
@@ -2486,6 +2587,7 @@ function goToTitleScreen() {
     sessionStats = null;
     gameState = GAME_STATES.TITLE;
     paused = false;
+    syncMenuUi();
     initializeMenuParticles();
     loop();
 }
