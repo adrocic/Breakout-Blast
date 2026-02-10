@@ -1587,6 +1587,11 @@ function setup() {
         }
     });
     updateMasterVolume(parseFloat(masterVolumeSlider.value()) || brickSoundVolume);
+    masterVolumeSlider.position(26, 18);
+    masterVolumeSlider.size(200);
+    masterVolumeSlider.style('accent-color', '#76c4ff');
+    masterVolumeSlider.style('opacity', '0.92');
+
 
     // Start with the menu displayed
     menuMusic.setLoop(true);
@@ -1711,12 +1716,16 @@ function draw() {
 
     fill(0, 0, 0, 100);
     if (paused) {
-        fill(0, 0, 0, 200);  // Set the fill color to semi-transparent black
+        fill(126, 189, 244, 130);
         rect(0, 0, 1920, 1080);
+        drawBubblePanel(width / 2 - 240, height / 2 - 130, 480, 260, color(125, 201, 255));
         textAlign(CENTER, CENTER);
-        textSize(32);
-        fill(255);
-        text('Paused', 1920 / 2, 1080 / 2);
+        textSize(58);
+        fill(63, 112, 180);
+        text('Paused', 1920 / 2, 1080 / 2 - 24);
+        textSize(24);
+        fill(90, 125, 173);
+        text('Press SPACE to keep bouncing!', 1920 / 2, 1080 / 2 + 32);
     }
 
     // Draw bricks
@@ -2011,29 +2020,35 @@ function drawLaserHUD() {
     }
 
     push();
-    textAlign(LEFT, TOP);
-    textSize(28);
-    fill(255);
-    text('Laser Charges', 40, 40);
+    noStroke();
+    fill(255, 255, 255, 200);
+    rect(24, 22, 290, 150, 28);
+    fill(255, 255, 255, 105);
+    rect(38, 32, 160, 24, 16);
 
-    const iconHeight = 48;
+    textAlign(LEFT, TOP);
+    textSize(26);
+    fill(56, 112, 178);
+    text('Laser Bubbles', 40, 40);
+
+    const iconHeight = 50;
     const iconWidth = 20;
     for (let i = 0; i < laser.charges; i++) {
-        const iconX = 40 + i * (iconWidth + 10);
-        const iconY = 80;
+        const iconX = 40 + i * (iconWidth + 12);
+        const iconY = 82;
         if (laserFrames.length) {
             const frame = laserFrames[i % laserFrames.length];
             image(frame, iconX, iconY, iconWidth, iconHeight);
         } else {
             fill(255, 160, 0, 160);
-            rect(iconX, iconY, iconWidth, iconHeight);
+            rect(iconX, iconY, iconWidth, iconHeight, 8);
         }
     }
 
     if (laser.isFiring) {
-        fill(255, 200, 0);
-        textSize(20);
-        text('FIRING!', 40, 80 + iconHeight + 10);
+        fill(255, 157, 58);
+        textSize(22);
+        text('ZAP!', 40, 84 + iconHeight + 8);
     }
 
     pop();
@@ -2083,11 +2098,12 @@ function createMenuParticle() {
     return {
         x: Math.random() * width,
         y: Math.random() * height,
-        radius: Math.random() * 14 + 10,
-        speed: Math.random() * 40 + 35,
-        drift: Math.random() * 30 + 18,
+        radius: Math.random() * 18 + 12,
+        speed: Math.random() * 32 + 18,
+        drift: Math.random() * 45 + 22,
+        wobble: Math.random() * 0.9 + 0.35,
         offset: Math.random() * Math.PI * 2,
-        colorShift: Math.random() * 120 - 40
+        colorShift: Math.random() * 70 - 25
     };
 }
 
@@ -2103,61 +2119,104 @@ function updateMenuParticles(accentColor) {
 
     menuParticles.forEach(particle => {
         particle.y += particle.speed * dt;
-        particle.x += Math.sin(frameCount * 0.02 + particle.offset) * particle.drift * dt;
+        const wobbleOffset = Math.sin(frameCount * 0.013 * particle.wobble + particle.offset) * particle.drift;
+        particle.x += wobbleOffset * dt;
 
-        if (particle.y - particle.radius > height + 80) {
-            particle.y = -particle.radius - Math.random() * 120;
+        if (particle.y - particle.radius > height + 120) {
+            particle.y = -particle.radius - Math.random() * 180;
             particle.x = Math.random() * width;
         }
 
-        const shimmer = Math.sin(frameCount * 0.05 + particle.offset);
-        const alpha = 120 + shimmer * 80;
+        const pulse = (Math.sin(frameCount * 0.035 + particle.offset) + 1) / 2;
+        const alpha = 70 + pulse * 115;
         const tintShift = particle.colorShift;
-        const r = constrain(baseR + tintShift * 0.4, 0, 255);
-        const g = constrain(baseG + tintShift * 0.2, 0, 255);
-        const b = constrain(baseB + 40 + tintShift * 0.5, 0, 255);
+        const r = constrain(baseR + 30 + tintShift * 0.3, 0, 255);
+        const g = constrain(baseG + 35 + tintShift * 0.25, 0, 255);
+        const b = constrain(baseB + 55 + tintShift * 0.35, 0, 255);
 
         noStroke();
-        fill(r, g, b, alpha);
-        ellipse(particle.x, particle.y, particle.radius * 1.4, particle.radius);
-        fill(r, g, b, alpha * 0.4);
-        ellipse(particle.x, particle.y, particle.radius * 0.6, particle.radius * 0.6);
+        fill(r, g, b, alpha * 0.7);
+        ellipse(particle.x, particle.y, particle.radius * 2, particle.radius * 1.2);
+
+        fill(255, 255, 255, alpha * 0.65);
+        ellipse(particle.x - particle.radius * 0.22, particle.y - particle.radius * 0.2, particle.radius * 0.58, particle.radius * 0.4);
+        fill(r, g, b, alpha * 0.35);
+        ellipse(particle.x + particle.radius * 0.16, particle.y + particle.radius * 0.09, particle.radius * 0.94, particle.radius * 0.6);
     });
 }
 
+function drawCloudPuff(x, y, size, alpha = 255) {
+    noStroke();
+    fill(255, 255, 255, alpha);
+    ellipse(x - size * 0.45, y + size * 0.05, size * 0.75, size * 0.58);
+    ellipse(x, y - size * 0.1, size * 0.95, size * 0.65);
+    ellipse(x + size * 0.45, y + size * 0.03, size * 0.72, size * 0.55);
+}
+
+function drawBubblePanel(x, y, panelWidth, panelHeight, accentColor) {
+    const accentR = red(accentColor);
+    const accentG = green(accentColor);
+    const accentB = blue(accentColor);
+
+    push();
+    noStroke();
+    for (let i = 0; i < 8; i++) {
+        const t = i / 7;
+        const bubbleColor = lerpColor(color(255, 255, 255, 225), color(accentR, accentG, accentB, 80), t);
+        fill(bubbleColor);
+        const pad = i * 7;
+        rect(x + pad, y + pad, panelWidth - pad * 2, panelHeight - pad * 2, 52 - i * 4);
+    }
+
+    fill(255, 255, 255, 92);
+    rect(x + 26, y + 22, panelWidth * 0.48, 38, 22);
+
+    stroke(accentR, accentG, accentB, 170);
+    strokeWeight(4);
+    noFill();
+    rect(x - 7, y - 7, panelWidth + 14, panelHeight + 14, 56);
+
+    noStroke();
+    for (let i = 0; i < 7; i++) {
+        const orbit = (frameCount * 0.02 + i * 0.85);
+        const bubbleX = x + panelWidth - 42 - i * 24 + Math.sin(orbit) * 6;
+        const bubbleY = y + 30 + i * 18 + Math.cos(orbit * 1.3) * 8;
+        fill(255, 255, 255, 150 - i * 12);
+        ellipse(bubbleX, bubbleY, 14 - i * 0.9, 14 - i * 0.9);
+    }
+
+    pop();
+}
+
 function drawMenuBackdrop(accentColor) {
-    background(12, 10, 32);
+    background(128, 198, 255);
+
+    push();
+    noStroke();
+    for (let i = 0; i < 5; i++) {
+        const y = (height / 4) * i;
+        const wave = Math.sin(frameCount * 0.01 + i) * 22;
+        const skyTone = lerpColor(color(195, 232, 255, 170), color(red(accentColor), green(accentColor), blue(accentColor), 145), i / 4);
+        fill(skyTone);
+        rect(0, y + wave, width, height / 4 + 60);
+    }
+    pop();
 
     if (backgroundImage) {
         push();
-        tint(255, 35);
+        tint(255, 18);
         image(backgroundImage, 0, 0, width, height);
         pop();
     }
 
-    push();
-    noStroke();
-    const layers = 8;
-    for (let i = 0; i < layers; i++) {
-        const progress = i / layers;
-        const bandHeight = height / layers + 32;
-        const wave = Math.sin(frameCount * 0.01 + progress * Math.PI * 2);
-        const baseColor = color(32, 24, 70, 110);
-        const highlight = color(red(accentColor), green(accentColor), blue(accentColor), 70);
-        const blended = lerpColor(baseColor, highlight, (wave + 1) / 2);
-        fill(blended);
-        rect(0, i * (height / layers) + wave * 16 - 16, width, bandHeight);
-    }
-    pop();
-
     updateMenuParticles(accentColor);
 
     push();
-    stroke(red(accentColor), green(accentColor), blue(accentColor), 90);
-    strokeWeight(3);
-    noFill();
-    const margin = 50 + Math.sin(frameCount * 0.01) * 8;
-    rect(margin, margin, width - margin * 2, height - margin * 2, 26);
+    const cloudDrift = frameCount * 0.8;
+    drawCloudPuff(width * 0.13 + Math.sin(cloudDrift * 0.01) * 12, height * 0.14, 180, 170);
+    drawCloudPuff(width * 0.76 + Math.sin(cloudDrift * 0.008 + 1.7) * 14, height * 0.2, 220, 165);
+    drawCloudPuff(width * 0.57 + Math.sin(cloudDrift * 0.006 + 0.4) * 17, height * 0.1, 160, 150);
+    drawCloudPuff(width * 0.25 + Math.sin(cloudDrift * 0.007 + 2.4) * 10, height * 0.86, 150, 125);
     pop();
 }
 
@@ -2170,25 +2229,16 @@ function drawTitleScreen() {
     const panelX = width / 2 - panelWidth / 2;
     const panelY = height / 2 - panelHeight / 2 + 60;
 
-    push();
-    noStroke();
-    fill(10, 12, 30, 220);
-    rect(panelX, panelY, panelWidth, panelHeight, 32);
-    const glowAlpha = 90 + 40 * Math.sin(frameCount * 0.05);
-    stroke(red(accent), green(accent), blue(accent), glowAlpha);
-    strokeWeight(4);
-    noFill();
-    rect(panelX - 8, panelY - 8, panelWidth + 16, panelHeight + 16, 36);
-    pop();
+    drawBubblePanel(panelX, panelY, panelWidth, panelHeight, accent);
 
     push();
     textAlign(CENTER, CENTER);
     textSize(96);
     fill(255);
-    text('Breakout Blast', width / 2, panelY - 140);
-    textSize(28);
-    fill(215);
-    text('An interstellar gauntlet of ricochets and power-ups', width / 2, panelY - 80);
+    text('Breakout Blast', width / 2, panelY - 148);
+    textSize(34);
+    fill(252, 242, 181);
+    text('Bounce into a bubbly sky adventure!', width / 2, panelY - 84);
     pop();
 
     const infoX = panelX + 60;
@@ -2197,13 +2247,13 @@ function drawTitleScreen() {
     textAlign(LEFT, TOP);
     textSize(26);
     fill(255);
-    text('Mission Briefing', infoX, infoY);
+    text('How to Play', infoX, infoY);
     textSize(18);
     fill(225);
     const briefingLines = [
-        '• Steer the paddle with A/D or the ←/→ arrows to redirect the energy core.',
-        '• Snatch power-ups to duplicate balls, ignite lasers, or bend gravity.',
-        '• Click to unleash stored laser charges with pinpoint precision.'
+        '• Scoot with A/D or ←/→ and keep the ball hopping happily.',
+        '• Catch power bubbles for extra balls, laser zaps, and gravity tricks.',
+        '• Click to blast charged lasers and clear rows with style.'
     ];
     for (let i = 0; i < briefingLines.length; i++) {
         text(briefingLines[i], infoX, infoY + 40 + i * 28);
@@ -2235,10 +2285,10 @@ function drawTitleScreen() {
     textAlign(CENTER, CENTER);
     textSize(38);
     fill(red(accent), green(accent), blue(accent), calloutAlpha);
-    text('Press ENTER to Launch', width / 2, calloutY);
+    text('Press ENTER to Start!', width / 2, calloutY);
     textSize(20);
     fill(235);
-    text('A/D or ←/→: Move · Space: Pause · Click: Fire Lasers · Adjust volume via the slider above', width / 2, calloutY + 40);
+    text('A/D or ←/→ move · Space pause · Click fire lasers · Slider controls volume', width / 2, calloutY + 40);
     pop();
 }
 
@@ -2254,8 +2304,8 @@ function drawLastRunSummary(x, y) {
 
     push();
     noStroke();
-    fill(12, 16, 34, 220);
-    rect(x - 30, y - 20, 260, 150, 18);
+    fill(255, 255, 255, 205);
+    rect(x - 30, y - 20, 260, 150, 24);
     stroke(red(accent), green(accent), blue(accent), 150);
     strokeWeight(2);
     noFill();
@@ -2282,18 +2332,10 @@ function drawEndScreen(state) {
     const panelX = width / 2 - panelWidth / 2;
     const panelY = height / 2 - panelHeight / 2 + 40;
 
-    push();
-    noStroke();
-    fill(10, 12, 28, 235);
-    rect(panelX, panelY, panelWidth, panelHeight, 32);
-    stroke(red(accent), green(accent), blue(accent), 130);
-    strokeWeight(4);
-    noFill();
-    rect(panelX - 10, panelY - 10, panelWidth + 20, panelHeight + 20, 36);
-    pop();
+    drawBubblePanel(panelX, panelY, panelWidth, panelHeight, accent);
 
-    const title = isVictory ? 'Arena Secured!' : 'Shields Shattered';
-    const subtitle = isVictory ? 'Your volleys echo across the stars.' : 'The swarm overwhelmed the defense grid.';
+    const title = isVictory ? 'Course Cleared!' : 'Oops! Try Again!';
+    const subtitle = isVictory ? 'You bounced your way through the clouds.' : 'The clouds got stormy — but you can bounce back!';
     push();
     textAlign(CENTER, CENTER);
     textSize(82);
@@ -2312,7 +2354,7 @@ function drawEndScreen(state) {
         textAlign(LEFT, TOP);
         textSize(26);
         fill(255);
-        text('Mission Report', statsX, statsY);
+        text('Round Summary', statsX, statsY);
         textSize(18);
         fill(225);
         const lines = [
@@ -2324,7 +2366,7 @@ function drawEndScreen(state) {
             text(lines[i], statsX, statsY + 40 + i * 28);
         }
 
-        const flavor = isVictory ? 'The void falls silent... for now.' : 'Recalibrate your aim and strike back.';
+        const flavor = isVictory ? 'Sparkly work, sky champion!' : "One more hop and you'll clear it!";
         text(flavor, statsX, statsY + 140);
         pop();
     }
@@ -2336,7 +2378,7 @@ function drawEndScreen(state) {
     textAlign(CENTER, CENTER);
     textSize(34);
     fill(red(accent), green(accent), blue(accent), alpha);
-    text('Press ENTER to Retry', width / 2, promptY);
+    text('Press ENTER to Play Again', width / 2, promptY);
     textSize(20);
     fill(235);
     text('Press M for Main Menu', width / 2, promptY + 40);

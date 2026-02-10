@@ -1,8 +1,21 @@
 html, body {
     margin: 0;
     padding: 0;
-    height: 100%;
-    background-color: #000;
+    min-height: 100%;
+    font-family: 'Trebuchet MS', 'Verdana', sans-serif;
+    background: radial-gradient(circle at 20% 20%, #f6fbff 0%, #d7ecff 34%, #9acdf5 68%, #67a8dc 100%);
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.75) 0 80px, transparent 82px),
+        radial-gradient(circle at 75% 16%, rgba(255, 255, 255, 0.72) 0 105px, transparent 108px),
+        radial-gradient(circle at 38% 12%, rgba(255, 255, 255, 0.62) 0 88px, transparent 91px),
+        radial-gradient(circle at 88% 36%, rgba(255, 255, 255, 0.58) 0 75px, transparent 78px);
 }
 
 main {
