@@ -6,6 +6,8 @@ A modern Breakout-style arcade game with custom pixel art, power-ups, and proced
 
 - https://jade-quokka-d2f928.netlify.app
 
+![breakout-blast-gif](https://github.com/user-attachments/assets/621bf2d6-b75b-44cf-ab8d-1e3ac7979626)
+
 ## Tech Stack
 
 - Rendering: Three.js
