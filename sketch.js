@@ -144,10 +144,12 @@ let seaShanty;
 let smite;
 let menuMusic;
 let menuGif;
+let menuTrack = null;
+let gameplayTrack = null;
 
 let brickHitSoundPlayers = [];
 let brickSoundVolume = 1;
-let masterVolumeSlider;
+let menuUiElements = null;
 let powerUpCatchSoundPlayer = null;
 let powerUpCatchEffects = [];
 
@@ -212,6 +214,151 @@ function ensureAudioContextRunning() {
     const context = getAudioContext();
     if (context && typeof context.resume === 'function' && context.state !== 'running') {
         context.resume();
+    }
+}
+
+
+function createChiptuneTrack(config) {
+    if (typeof p5 === 'undefined' || typeof p5.Oscillator !== 'function' || typeof p5.Envelope !== 'function') {
+        return null;
+    }
+
+    const oscillatorA = new p5.Oscillator(config.waveA || 'square');
+    const oscillatorB = new p5.Oscillator(config.waveB || 'triangle');
+    const envelopeA = new p5.Envelope();
+    const envelopeB = new p5.Envelope();
+
+    envelopeA.setADSR(0.003, 0.06, 0.0, 0.08);
+    envelopeB.setADSR(0.002, 0.04, 0.0, 0.08);
+    envelopeA.setRange((config.volumeA || 0.16) * brickSoundVolume, 0);
+    envelopeB.setRange((config.volumeB || 0.1) * brickSoundVolume, 0);
+
+    oscillatorA.amp(envelopeA);
+    oscillatorB.amp(envelopeB);
+    oscillatorA.start();
+    oscillatorB.start();
+
+    const beatMs = 60000 / (config.bpm || 128);
+
+    return {
+        playing: false,
+        index: 0,
+        nextNoteTime: 0,
+        start() {
+            ensureAudioContextRunning();
+            this.playing = true;
+            this.index = 0;
+            this.nextNoteTime = 0;
+        },
+        stop() {
+            this.playing = false;
+            oscillatorA.amp(0, 0.06);
+            oscillatorB.amp(0, 0.06);
+        },
+        setVolume(multiplier) {
+            envelopeA.setRange((config.volumeA || 0.16) * multiplier, 0);
+            envelopeB.setRange((config.volumeB || 0.1) * multiplier, 0);
+        },
+        update(nowMs) {
+            if (!this.playing || !config.pattern || !config.pattern.length) {
+                return;
+            }
+
+            if (this.nextNoteTime === 0) {
+                this.nextNoteTime = nowMs;
+            }
+
+            while (nowMs >= this.nextNoteTime) {
+                const step = config.pattern[this.index % config.pattern.length];
+                const beats = step.beats || 1;
+                const durationMs = beatMs * beats;
+
+                if (!step.rest) {
+                    const frequency = midiToFreq(step.midi);
+                    oscillatorA.freq(frequency, 0.02);
+                    oscillatorB.freq(frequency * (step.detuneMultiplier || 1.5), 0.02);
+                    envelopeA.play(oscillatorA);
+                    envelopeB.play(oscillatorB);
+                }
+
+                this.index += 1;
+                this.nextNoteTime += durationMs;
+            }
+        }
+    };
+}
+
+function initializeChiptuneMusic() {
+    menuTrack = createChiptuneTrack({
+        bpm: 152,
+        waveA: 'square',
+        waveB: 'triangle',
+        volumeA: 0.14,
+        volumeB: 0.08,
+        pattern: [
+            { midi: 72, beats: 0.5 }, { midi: 76, beats: 0.5 }, { midi: 79, beats: 0.5 }, { midi: 84, beats: 0.5 },
+            { midi: 83, beats: 0.5 }, { midi: 79, beats: 0.5 }, { midi: 76, beats: 0.5 }, { midi: 72, beats: 0.5 },
+            { midi: 74, beats: 0.5 }, { midi: 77, beats: 0.5 }, { midi: 81, beats: 0.5 }, { midi: 84, beats: 0.5 },
+            { midi: 81, beats: 0.5 }, { midi: 77, beats: 0.5 }, { midi: 74, beats: 0.5 }, { midi: 71, beats: 0.5 }
+        ]
+    });
+
+    gameplayTrack = createChiptuneTrack({
+        bpm: 168,
+        waveA: 'square',
+        waveB: 'sawtooth',
+        volumeA: 0.13,
+        volumeB: 0.09,
+        pattern: [
+            { midi: 64, beats: 0.5 }, { midi: 67, beats: 0.5 }, { midi: 71, beats: 0.5 }, { midi: 76, beats: 0.5 },
+            { midi: 74, beats: 0.5 }, { midi: 71, beats: 0.5 }, { midi: 67, beats: 0.5 }, { midi: 64, beats: 0.5 },
+            { midi: 62, beats: 0.5 }, { midi: 66, beats: 0.5 }, { midi: 69, beats: 0.5 }, { midi: 74, beats: 0.5 },
+            { midi: 71, beats: 0.5 }, { midi: 69, beats: 0.5 }, { midi: 66, beats: 0.5 }, { midi: 62, beats: 0.5 }
+        ]
+    });
+}
+
+function stopGameplayMusic() {
+    if (gameplayTrack && typeof gameplayTrack.stop === 'function') {
+        gameplayTrack.stop();
+    }
+
+    if (seaShanty && typeof seaShanty.stop === 'function') {
+        seaShanty.stop();
+    }
+}
+
+function startGameplayMusic() {
+    if (gameplayTrack && typeof gameplayTrack.start === 'function') {
+        gameplayTrack.start();
+        return;
+    }
+
+    if (seaShanty && typeof seaShanty.setLoop === 'function') {
+        seaShanty.setLoop(true);
+        seaShanty.play();
+    }
+}
+
+function startMenuMusic() {
+    if (menuTrack && typeof menuTrack.start === 'function') {
+        menuTrack.start();
+        return;
+    }
+
+    if (menuMusic && typeof menuMusic.setLoop === 'function') {
+        menuMusic.setLoop(true);
+        menuMusic.play();
+    }
+}
+
+function updateMusicSequencers() {
+    const now = getCurrentTimeMs();
+    if (menuTrack && typeof menuTrack.update === 'function') {
+        menuTrack.update(now);
+    }
+    if (gameplayTrack && typeof gameplayTrack.update === 'function') {
+        gameplayTrack.update(now);
     }
 }
 
@@ -788,6 +935,14 @@ function updateMasterVolume(newVolume) {
             sound.setVolume(clampedVolume);
         }
     });
+
+    if (menuTrack && typeof menuTrack.setVolume === 'function') {
+        menuTrack.setVolume(clampedVolume);
+    }
+
+    if (gameplayTrack && typeof gameplayTrack.setVolume === 'function') {
+        gameplayTrack.setVolume(clampedVolume);
+    }
 
     if (gravityWellSound && typeof gravityWellSound.setVolume === 'function') {
         gravityWellSound.setVolume();
@@ -1573,24 +1728,13 @@ function setup() {
     initializePowerUpCatchSound();
     initializeGravityWellSound();
     initializePaddleCatchSounds();
+    initializeChiptuneMusic();
 
-
-    // Create volume slider
-    masterVolumeSlider = createInput(brickSoundVolume, 'range');
-    masterVolumeSlider.attribute('min', 0);
-    masterVolumeSlider.attribute('max', 1);
-    masterVolumeSlider.attribute('step', 0.01);
-    masterVolumeSlider.input(() => {
-        const sliderValue = parseFloat(masterVolumeSlider.value());
-        if (!isNaN(sliderValue)) {
-            updateMasterVolume(sliderValue);
-        }
-    });
-    updateMasterVolume(parseFloat(masterVolumeSlider.value()) || brickSoundVolume);
+    initializeMenuDomUi();
+    updateMasterVolume(brickSoundVolume);
 
     // Start with the menu displayed
-    menuMusic.setLoop(true);
-    menuMusic.play();
+    startMenuMusic();
     initializeMenuParticles();
     resetPaddleInputState();
 }
@@ -1625,11 +1769,16 @@ function startGame() {
     paddle.update();
 
     allBalls.push(new Ball());
-    menuMusic.stop();
-    seaShanty.setLoop(true);
-    seaShanty.play();
+    if (menuTrack && typeof menuTrack.stop === 'function') {
+        menuTrack.stop();
+    }
+    if (menuMusic && typeof menuMusic.stop === 'function') {
+        menuMusic.stop();
+    }
+    startGameplayMusic();
     gameState = GAME_STATES.PLAYING;
     sessionStats = createSessionStats();
+    syncMenuUi();
     paused = false;
     loop();
 }
@@ -1646,10 +1795,10 @@ function keyPressed() {
     if (gameState === GAME_STATES.PLAYING && key === ' ') {  // Toggle pause with spacebar
         paused = !paused;
         if (paused) {
-            seaShanty.stop();
+            stopGameplayMusic();
             noLoop();
         } else {
-            seaShanty.play();
+            startGameplayMusic();
             loop();
         }
     }
@@ -1683,15 +1832,21 @@ function mousePressed() {
 }
 
 function draw() {
+    updateMusicSequencers();
+
     if (gameState === GAME_STATES.TITLE) {
         ensureMenuMusicPlaying();
-        drawTitleScreen();
+        syncMenuUi();
+        clear();
         return;
     }
 
     if (gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY) {
         ensureMenuMusicPlaying();
-        drawEndScreen(gameState);
+        syncMenuUi();
+        clear();
+        fill(255, 255, 255, 35);
+        rect(0, 0, width, height);
         return;
     }
 
@@ -1699,6 +1854,7 @@ function draw() {
         return;
     }
 
+    syncMenuUi();
     background(backgroundImage);
 
     if (paddle && typeof paddle.update === 'function') {
@@ -1710,14 +1866,6 @@ function draw() {
     updateCaughtBallState();
 
     fill(0, 0, 0, 100);
-    if (paused) {
-        fill(0, 0, 0, 200);  // Set the fill color to semi-transparent black
-        rect(0, 0, 1920, 1080);
-        textAlign(CENTER, CENTER);
-        textSize(32);
-        fill(255);
-        text('Paused', 1920 / 2, 1080 / 2);
-    }
 
     // Draw bricks
     for (let i = bricks.length - 1; i >= 0; i--) {
@@ -1910,6 +2058,24 @@ function draw() {
         endCurrentSession(GAME_STATES.VICTORY, 'victory');
         return;
     }
+
+    if (paused) {
+        push();
+        noStroke();
+        fill(255, 255, 255, 255);
+        rect(0, 0, width, height);
+        fill(142, 209, 255, 220);
+        rect(0, 0, width, height);
+        drawBubblePanel(width / 2 - 300, height / 2 - 170, 600, 340, color(114, 195, 255));
+        textAlign(CENTER, CENTER);
+        textSize(76);
+        fill(44, 98, 162);
+        text('Paused', width / 2, height / 2 - 36);
+        textSize(28);
+        fill(72, 120, 177);
+        text('Press SPACE to jump back in!', width / 2, height / 2 + 30);
+        pop();
+    }
 }
 
 function attemptLaserFire() {
@@ -2011,29 +2177,35 @@ function drawLaserHUD() {
     }
 
     push();
-    textAlign(LEFT, TOP);
-    textSize(28);
-    fill(255);
-    text('Laser Charges', 40, 40);
+    noStroke();
+    fill(255, 255, 255, 200);
+    rect(24, 22, 290, 150, 28);
+    fill(255, 255, 255, 105);
+    rect(38, 32, 160, 24, 16);
 
-    const iconHeight = 48;
+    textAlign(LEFT, TOP);
+    textSize(26);
+    fill(56, 112, 178);
+    text('Laser Bubbles', 40, 40);
+
+    const iconHeight = 50;
     const iconWidth = 20;
     for (let i = 0; i < laser.charges; i++) {
-        const iconX = 40 + i * (iconWidth + 10);
-        const iconY = 80;
+        const iconX = 40 + i * (iconWidth + 12);
+        const iconY = 82;
         if (laserFrames.length) {
             const frame = laserFrames[i % laserFrames.length];
             image(frame, iconX, iconY, iconWidth, iconHeight);
         } else {
             fill(255, 160, 0, 160);
-            rect(iconX, iconY, iconWidth, iconHeight);
+            rect(iconX, iconY, iconWidth, iconHeight, 8);
         }
     }
 
     if (laser.isFiring) {
-        fill(255, 200, 0);
-        textSize(20);
-        text('FIRING!', 40, 80 + iconHeight + 10);
+        fill(255, 157, 58);
+        textSize(22);
+        text('ZAP!', 40, 84 + iconHeight + 8);
     }
 
     pop();
@@ -2055,7 +2227,123 @@ const debug = (shape) => {
     pop();
 }
 
+
+function initializeMenuDomUi() {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    const root = document.getElementById('menu-ui');
+    if (!root) {
+        return;
+    }
+
+    menuUiElements = {
+        root,
+        titlePanel: document.getElementById('menu-title-panel'),
+        endPanel: document.getElementById('menu-end-panel'),
+        endTitle: document.getElementById('menu-end-title'),
+        endSubtitle: document.getElementById('menu-end-subtitle'),
+        summary: document.getElementById('menu-summary'),
+        startButton: document.getElementById('menu-start-button'),
+        retryButton: document.getElementById('menu-retry-button'),
+        mainMenuButton: document.getElementById('menu-main-button'),
+        volumeRange: document.getElementById('menu-volume-range')
+    };
+
+    if (menuUiElements.startButton) {
+        menuUiElements.startButton.addEventListener('click', () => {
+            if (gameState === GAME_STATES.TITLE) {
+                smite && typeof smite.play === 'function' && smite.play();
+                startGame();
+            }
+        });
+    }
+
+    if (menuUiElements.retryButton) {
+        menuUiElements.retryButton.addEventListener('click', () => {
+            if (gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY) {
+                smite && typeof smite.play === 'function' && smite.play();
+                startGame();
+            }
+        });
+    }
+
+    if (menuUiElements.mainMenuButton) {
+        menuUiElements.mainMenuButton.addEventListener('click', () => {
+            smite && typeof smite.play === 'function' && smite.play();
+            goToTitleScreen();
+        });
+    }
+
+    if (menuUiElements.volumeRange) {
+        menuUiElements.volumeRange.value = String(brickSoundVolume);
+        menuUiElements.volumeRange.addEventListener('input', event => {
+            const sliderValue = parseFloat(event.target.value);
+            if (!isNaN(sliderValue)) {
+                updateMasterVolume(sliderValue);
+            }
+        });
+    }
+
+    syncMenuUi();
+}
+
+function syncMenuUi() {
+    if (!menuUiElements || typeof document === 'undefined') {
+        return;
+    }
+
+    const isTitle = gameState === GAME_STATES.TITLE;
+    const isEnd = gameState === GAME_STATES.GAME_OVER || gameState === GAME_STATES.VICTORY;
+
+    menuUiElements.root.classList.toggle('visible', isTitle || isEnd);
+    menuUiElements.root.classList.toggle('end-state', isEnd);
+
+    if (menuUiElements.titlePanel) {
+        menuUiElements.titlePanel.classList.toggle('hidden', !isTitle);
+    }
+
+    if (menuUiElements.endPanel) {
+        menuUiElements.endPanel.classList.toggle('hidden', !isEnd);
+    }
+
+    if (isEnd && menuUiElements.endTitle && menuUiElements.endSubtitle) {
+        const won = gameState === GAME_STATES.VICTORY;
+        menuUiElements.endTitle.textContent = won ? 'Course Cleared!' : 'Cloudy Crash!';
+        menuUiElements.endSubtitle.textContent = won
+            ? 'You bounced through every block in style.'
+            : 'You got close — jump back in for another run.';
+
+        const summary = buildSummaryFromSession(sessionStats) || lastSessionSummary;
+        if (menuUiElements.summary) {
+            if (summary) {
+                menuUiElements.summary.innerHTML = `
+                    <li><strong>Bricks shattered:</strong> ${summary.bricksDestroyed}</li>
+                    <li><strong>Power-ups collected:</strong> ${summary.powerUpsCollected}</li>
+                    <li><strong>Time in arena:</strong> ${formatDuration(summary.durationMs)}</li>
+                `;
+            } else {
+                menuUiElements.summary.innerHTML = '<li>Play a round to track your stats!</li>';
+            }
+        }
+    }
+
+    if (window.MenuScene && typeof window.MenuScene.setActive === 'function') {
+        window.MenuScene.setActive(isTitle || isEnd);
+        const theme = gameState === GAME_STATES.VICTORY ? 'victory' : gameState === GAME_STATES.GAME_OVER ? 'defeat' : 'title';
+        window.MenuScene.setTheme(theme);
+    }
+}
+
 function ensureMenuMusicPlaying() {
+    if (menuTrack && typeof menuTrack.start === 'function') {
+        if (!menuTrack.playing) {
+            menuTrack.start();
+        }
+        return;
+    }
+
     if (!menuMusic || typeof menuMusic.isPlaying !== 'function') {
         return;
     }
@@ -2083,11 +2371,12 @@ function createMenuParticle() {
     return {
         x: Math.random() * width,
         y: Math.random() * height,
-        radius: Math.random() * 14 + 10,
-        speed: Math.random() * 40 + 35,
-        drift: Math.random() * 30 + 18,
+        radius: Math.random() * 18 + 12,
+        speed: Math.random() * 32 + 18,
+        drift: Math.random() * 45 + 22,
+        wobble: Math.random() * 0.9 + 0.35,
         offset: Math.random() * Math.PI * 2,
-        colorShift: Math.random() * 120 - 40
+        colorShift: Math.random() * 70 - 25
     };
 }
 
@@ -2103,61 +2392,104 @@ function updateMenuParticles(accentColor) {
 
     menuParticles.forEach(particle => {
         particle.y += particle.speed * dt;
-        particle.x += Math.sin(frameCount * 0.02 + particle.offset) * particle.drift * dt;
+        const wobbleOffset = Math.sin(frameCount * 0.013 * particle.wobble + particle.offset) * particle.drift;
+        particle.x += wobbleOffset * dt;
 
-        if (particle.y - particle.radius > height + 80) {
-            particle.y = -particle.radius - Math.random() * 120;
+        if (particle.y - particle.radius > height + 120) {
+            particle.y = -particle.radius - Math.random() * 180;
             particle.x = Math.random() * width;
         }
 
-        const shimmer = Math.sin(frameCount * 0.05 + particle.offset);
-        const alpha = 120 + shimmer * 80;
+        const pulse = (Math.sin(frameCount * 0.035 + particle.offset) + 1) / 2;
+        const alpha = 70 + pulse * 115;
         const tintShift = particle.colorShift;
-        const r = constrain(baseR + tintShift * 0.4, 0, 255);
-        const g = constrain(baseG + tintShift * 0.2, 0, 255);
-        const b = constrain(baseB + 40 + tintShift * 0.5, 0, 255);
+        const r = constrain(baseR + 30 + tintShift * 0.3, 0, 255);
+        const g = constrain(baseG + 35 + tintShift * 0.25, 0, 255);
+        const b = constrain(baseB + 55 + tintShift * 0.35, 0, 255);
 
         noStroke();
-        fill(r, g, b, alpha);
-        ellipse(particle.x, particle.y, particle.radius * 1.4, particle.radius);
-        fill(r, g, b, alpha * 0.4);
-        ellipse(particle.x, particle.y, particle.radius * 0.6, particle.radius * 0.6);
+        fill(r, g, b, alpha * 0.7);
+        ellipse(particle.x, particle.y, particle.radius * 2, particle.radius * 1.2);
+
+        fill(255, 255, 255, alpha * 0.65);
+        ellipse(particle.x - particle.radius * 0.22, particle.y - particle.radius * 0.2, particle.radius * 0.58, particle.radius * 0.4);
+        fill(r, g, b, alpha * 0.35);
+        ellipse(particle.x + particle.radius * 0.16, particle.y + particle.radius * 0.09, particle.radius * 0.94, particle.radius * 0.6);
     });
 }
 
+function drawCloudPuff(x, y, size, alpha = 255) {
+    noStroke();
+    fill(255, 255, 255, alpha);
+    ellipse(x - size * 0.45, y + size * 0.05, size * 0.75, size * 0.58);
+    ellipse(x, y - size * 0.1, size * 0.95, size * 0.65);
+    ellipse(x + size * 0.45, y + size * 0.03, size * 0.72, size * 0.55);
+}
+
+function drawBubblePanel(x, y, panelWidth, panelHeight, accentColor) {
+    const accentR = red(accentColor);
+    const accentG = green(accentColor);
+    const accentB = blue(accentColor);
+
+    push();
+    noStroke();
+    for (let i = 0; i < 8; i++) {
+        const t = i / 7;
+        const bubbleColor = lerpColor(color(255, 255, 255, 225), color(accentR, accentG, accentB, 80), t);
+        fill(bubbleColor);
+        const pad = i * 7;
+        rect(x + pad, y + pad, panelWidth - pad * 2, panelHeight - pad * 2, 52 - i * 4);
+    }
+
+    fill(255, 255, 255, 92);
+    rect(x + 26, y + 22, panelWidth * 0.48, 38, 22);
+
+    stroke(accentR, accentG, accentB, 170);
+    strokeWeight(4);
+    noFill();
+    rect(x - 7, y - 7, panelWidth + 14, panelHeight + 14, 56);
+
+    noStroke();
+    for (let i = 0; i < 7; i++) {
+        const orbit = (frameCount * 0.02 + i * 0.85);
+        const bubbleX = x + panelWidth - 42 - i * 24 + Math.sin(orbit) * 6;
+        const bubbleY = y + 30 + i * 18 + Math.cos(orbit * 1.3) * 8;
+        fill(255, 255, 255, 150 - i * 12);
+        ellipse(bubbleX, bubbleY, 14 - i * 0.9, 14 - i * 0.9);
+    }
+
+    pop();
+}
+
 function drawMenuBackdrop(accentColor) {
-    background(12, 10, 32);
+    background(128, 198, 255);
+
+    push();
+    noStroke();
+    for (let i = 0; i < 5; i++) {
+        const y = (height / 4) * i;
+        const wave = Math.sin(frameCount * 0.01 + i) * 22;
+        const skyTone = lerpColor(color(195, 232, 255, 170), color(red(accentColor), green(accentColor), blue(accentColor), 145), i / 4);
+        fill(skyTone);
+        rect(0, y + wave, width, height / 4 + 60);
+    }
+    pop();
 
     if (backgroundImage) {
         push();
-        tint(255, 35);
+        tint(255, 18);
         image(backgroundImage, 0, 0, width, height);
         pop();
     }
 
-    push();
-    noStroke();
-    const layers = 8;
-    for (let i = 0; i < layers; i++) {
-        const progress = i / layers;
-        const bandHeight = height / layers + 32;
-        const wave = Math.sin(frameCount * 0.01 + progress * Math.PI * 2);
-        const baseColor = color(32, 24, 70, 110);
-        const highlight = color(red(accentColor), green(accentColor), blue(accentColor), 70);
-        const blended = lerpColor(baseColor, highlight, (wave + 1) / 2);
-        fill(blended);
-        rect(0, i * (height / layers) + wave * 16 - 16, width, bandHeight);
-    }
-    pop();
-
     updateMenuParticles(accentColor);
 
     push();
-    stroke(red(accentColor), green(accentColor), blue(accentColor), 90);
-    strokeWeight(3);
-    noFill();
-    const margin = 50 + Math.sin(frameCount * 0.01) * 8;
-    rect(margin, margin, width - margin * 2, height - margin * 2, 26);
+    const cloudDrift = frameCount * 0.8;
+    drawCloudPuff(width * 0.13 + Math.sin(cloudDrift * 0.01) * 12, height * 0.14, 180, 170);
+    drawCloudPuff(width * 0.76 + Math.sin(cloudDrift * 0.008 + 1.7) * 14, height * 0.2, 220, 165);
+    drawCloudPuff(width * 0.57 + Math.sin(cloudDrift * 0.006 + 0.4) * 17, height * 0.1, 160, 150);
+    drawCloudPuff(width * 0.25 + Math.sin(cloudDrift * 0.007 + 2.4) * 10, height * 0.86, 150, 125);
     pop();
 }
 
@@ -2170,25 +2502,16 @@ function drawTitleScreen() {
     const panelX = width / 2 - panelWidth / 2;
     const panelY = height / 2 - panelHeight / 2 + 60;
 
-    push();
-    noStroke();
-    fill(10, 12, 30, 220);
-    rect(panelX, panelY, panelWidth, panelHeight, 32);
-    const glowAlpha = 90 + 40 * Math.sin(frameCount * 0.05);
-    stroke(red(accent), green(accent), blue(accent), glowAlpha);
-    strokeWeight(4);
-    noFill();
-    rect(panelX - 8, panelY - 8, panelWidth + 16, panelHeight + 16, 36);
-    pop();
+    drawBubblePanel(panelX, panelY, panelWidth, panelHeight, accent);
 
     push();
     textAlign(CENTER, CENTER);
     textSize(96);
     fill(255);
-    text('Breakout Blast', width / 2, panelY - 140);
-    textSize(28);
-    fill(215);
-    text('An interstellar gauntlet of ricochets and power-ups', width / 2, panelY - 80);
+    text('Breakout Blast', width / 2, panelY - 148);
+    textSize(34);
+    fill(252, 242, 181);
+    text('Bounce into a bubbly sky adventure!', width / 2, panelY - 84);
     pop();
 
     const infoX = panelX + 60;
@@ -2197,13 +2520,13 @@ function drawTitleScreen() {
     textAlign(LEFT, TOP);
     textSize(26);
     fill(255);
-    text('Mission Briefing', infoX, infoY);
+    text('How to Play', infoX, infoY);
     textSize(18);
     fill(225);
     const briefingLines = [
-        '• Steer the paddle with A/D or the ←/→ arrows to redirect the energy core.',
-        '• Snatch power-ups to duplicate balls, ignite lasers, or bend gravity.',
-        '• Click to unleash stored laser charges with pinpoint precision.'
+        '• Scoot with A/D or ←/→ and keep the ball hopping happily.',
+        '• Catch power bubbles for extra balls, laser zaps, and gravity tricks.',
+        '• Click to blast charged lasers and clear rows with style.'
     ];
     for (let i = 0; i < briefingLines.length; i++) {
         text(briefingLines[i], infoX, infoY + 40 + i * 28);
@@ -2235,10 +2558,10 @@ function drawTitleScreen() {
     textAlign(CENTER, CENTER);
     textSize(38);
     fill(red(accent), green(accent), blue(accent), calloutAlpha);
-    text('Press ENTER to Launch', width / 2, calloutY);
+    text('Press ENTER to Start!', width / 2, calloutY);
     textSize(20);
     fill(235);
-    text('A/D or ←/→: Move · Space: Pause · Click: Fire Lasers · Adjust volume via the slider above', width / 2, calloutY + 40);
+    text('A/D or ←/→ move · Space pause · Click fire lasers · Slider controls volume', width / 2, calloutY + 40);
     pop();
 }
 
@@ -2254,8 +2577,8 @@ function drawLastRunSummary(x, y) {
 
     push();
     noStroke();
-    fill(12, 16, 34, 220);
-    rect(x - 30, y - 20, 260, 150, 18);
+    fill(255, 255, 255, 205);
+    rect(x - 30, y - 20, 260, 150, 24);
     stroke(red(accent), green(accent), blue(accent), 150);
     strokeWeight(2);
     noFill();
@@ -2282,18 +2605,10 @@ function drawEndScreen(state) {
     const panelX = width / 2 - panelWidth / 2;
     const panelY = height / 2 - panelHeight / 2 + 40;
 
-    push();
-    noStroke();
-    fill(10, 12, 28, 235);
-    rect(panelX, panelY, panelWidth, panelHeight, 32);
-    stroke(red(accent), green(accent), blue(accent), 130);
-    strokeWeight(4);
-    noFill();
-    rect(panelX - 10, panelY - 10, panelWidth + 20, panelHeight + 20, 36);
-    pop();
+    drawBubblePanel(panelX, panelY, panelWidth, panelHeight, accent);
 
-    const title = isVictory ? 'Arena Secured!' : 'Shields Shattered';
-    const subtitle = isVictory ? 'Your volleys echo across the stars.' : 'The swarm overwhelmed the defense grid.';
+    const title = isVictory ? 'Course Cleared!' : 'Oops! Try Again!';
+    const subtitle = isVictory ? 'You bounced your way through the clouds.' : 'The clouds got stormy — but you can bounce back!';
     push();
     textAlign(CENTER, CENTER);
     textSize(82);
@@ -2312,7 +2627,7 @@ function drawEndScreen(state) {
         textAlign(LEFT, TOP);
         textSize(26);
         fill(255);
-        text('Mission Report', statsX, statsY);
+        text('Round Summary', statsX, statsY);
         textSize(18);
         fill(225);
         const lines = [
@@ -2324,7 +2639,7 @@ function drawEndScreen(state) {
             text(lines[i], statsX, statsY + 40 + i * 28);
         }
 
-        const flavor = isVictory ? 'The void falls silent... for now.' : 'Recalibrate your aim and strike back.';
+        const flavor = isVictory ? 'Sparkly work, sky champion!' : "One more hop and you'll clear it!";
         text(flavor, statsX, statsY + 140);
         pop();
     }
@@ -2336,7 +2651,7 @@ function drawEndScreen(state) {
     textAlign(CENTER, CENTER);
     textSize(34);
     fill(red(accent), green(accent), blue(accent), alpha);
-    text('Press ENTER to Retry', width / 2, promptY);
+    text('Press ENTER to Play Again', width / 2, promptY);
     textSize(20);
     fill(235);
     text('Press M for Main Menu', width / 2, promptY + 40);
@@ -2403,9 +2718,7 @@ function formatDuration(durationMs) {
 }
 
 function endCurrentSession(nextState, resultLabel) {
-    if (seaShanty && typeof seaShanty.stop === 'function') {
-        seaShanty.stop();
-    }
+    stopGameplayMusic();
 
     if (gravityWellSound && typeof gravityWellSound.stop === 'function') {
         gravityWellSound.stop();
@@ -2416,13 +2729,12 @@ function endCurrentSession(nextState, resultLabel) {
     finalizeSession(resultLabel);
     gameState = nextState;
     paused = false;
+    syncMenuUi();
     loop();
 }
 
 function goToTitleScreen() {
-    if (seaShanty && typeof seaShanty.stop === 'function') {
-        seaShanty.stop();
-    }
+    stopGameplayMusic();
 
     ensureMenuMusicPlaying();
     bricks = [];
@@ -2444,6 +2756,7 @@ function goToTitleScreen() {
     sessionStats = null;
     gameState = GAME_STATES.TITLE;
     paused = false;
+    syncMenuUi();
     initializeMenuParticles();
     loop();
 }

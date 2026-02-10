@@ -1,14 +1,139 @@
 html, body {
     margin: 0;
     padding: 0;
-    height: 100%;
-    background-color: #000;
+    min-height: 100%;
+    font-family: 'Trebuchet MS', 'Verdana', sans-serif;
+    background: linear-gradient(180deg, #9cd8ff 0%, #84c7f4 100%);
+    color: #ffffff;
+}
+
+body {
+    overflow: hidden;
+}
+
+#three-menu-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    transition: opacity 220ms ease;
+}
+
+#three-menu-bg.hidden {
+    opacity: 0;
+    pointer-events: none;
 }
 
 main {
     min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
 }
 
 canvas {
     display: block;
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+.menu-ui {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.menu-ui.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.menu-panel {
+    width: min(780px, calc(100vw - 48px));
+    border-radius: 32px;
+    padding: 28px 30px;
+    background: linear-gradient(170deg, rgba(255, 255, 255, 0.9), rgba(255, 228, 241, 0.86));
+    border: 2px solid rgba(255, 255, 255, 0.74);
+    box-shadow: 0 25px 70px rgba(31, 84, 132, 0.38);
+    color: #2e5478;
+    pointer-events: auto;
+}
+
+.menu-panel h1,
+.menu-panel h2,
+.menu-panel h3 {
+    margin: 0 0 8px;
+}
+
+.menu-panel h1 {
+    font-size: clamp(42px, 7vw, 76px);
+    color: #2f6cab;
+}
+
+.menu-panel h2 {
+    font-size: clamp(36px, 6vw, 64px);
+    color: #2f6cab;
+}
+
+.subtitle {
+    margin: 0 0 18px;
+    color: #5b79a6;
+    font-size: clamp(17px, 2.3vw, 24px);
+}
+
+.menu-list {
+    margin: 0;
+    padding-left: 20px;
+    color: #3f618a;
+    font-size: 18px;
+    line-height: 1.5;
+}
+
+.menu-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.menu-button {
+    border: none;
+    border-radius: 999px;
+    padding: 12px 22px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #29567f;
+    background: #e7f5ff;
+    box-shadow: 0 8px 20px rgba(57, 115, 167, 0.24);
+}
+
+.menu-button.primary {
+    color: #ffffff;
+    background: linear-gradient(135deg, #58b2ff 0%, #72d2ff 100%);
+}
+
+.volume-control {
+    display: block;
+    margin-top: 14px;
+    color: #3f618a;
+    font-size: 16px;
+}
+
+.volume-control input {
+    width: 100%;
+    margin-top: 8px;
+    accent-color: #58b2ff;
+}
+
+.hidden {
+    display: none;
 }

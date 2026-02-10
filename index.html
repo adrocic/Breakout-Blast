@@ -6,6 +6,7 @@
          removal of registerMethod) that stop the sketch from running. -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/addons/p5.sound.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
     <link rel="icon" type="image/png" href="Assets/ball.png">
     <link rel="stylesheet" type="text/css" href="style.css">
@@ -13,8 +14,42 @@
 
   </head>
   <body>
+    <div id="three-menu-bg" aria-hidden="true"></div>
+
     <main>
     </main>
+
+    <section id="menu-ui" class="menu-ui" aria-label="Main menu">
+      <article id="menu-title-panel" class="menu-panel">
+        <h1>Breakout Blast</h1>
+        <p class="subtitle">A whimsical cloud kingdom of ricochets, power bubbles, and arcade chaos.</p>
+        <div class="menu-actions">
+          <button id="menu-start-button" class="menu-button primary">Start Adventure</button>
+        </div>
+        <ul class="menu-list">
+          <li>Move with <strong>A / D</strong> or <strong>← / →</strong>.</li>
+          <li>Click to fire lasers. Space toggles pause.</li>
+          <li>Catch power-ups for bonus balls and special abilities.</li>
+        </ul>
+        <label class="volume-control" for="menu-volume-range">
+          Music & SFX Volume
+          <input id="menu-volume-range" type="range" min="0" max="1" step="0.01" value="1" />
+        </label>
+      </article>
+
+      <article id="menu-end-panel" class="menu-panel hidden">
+        <h2 id="menu-end-title">Course Cleared!</h2>
+        <p id="menu-end-subtitle" class="subtitle"></p>
+        <h3>Round Summary</h3>
+        <ul id="menu-summary" class="menu-list"></ul>
+        <div class="menu-actions">
+          <button id="menu-retry-button" class="menu-button primary">Play Again</button>
+          <button id="menu-main-button" class="menu-button">Main Menu</button>
+        </div>
+      </article>
+    </section>
+
+    <script src="menu3d.js"></script>
     <script src="sketch.js"></script>
   </body>
 </html>
